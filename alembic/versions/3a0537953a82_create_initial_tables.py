@@ -53,6 +53,21 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tasks_id'), 'tasks', ['id'], unique=False)
     op.create_index(op.f('ix_tasks_status'), 'tasks', ['status'], unique=False)
     # ### end Alembic commands ###
+    
+    # Manually append this to the absolute bottom of upgrade():
+    # 1. Define a minimal structural representation of the roles table
+    roles_table = sa.table(
+        'roles',
+        sa.column('id', sa.Integer),
+        sa.column('name', sa.String)
+    )
+
+    # 2. Perform the bulk insert safely during migration execution
+    op.bulk_insert(roles_table, [
+        {'id': 1, 'name': 'ADMIN'},
+        {'id': 2, 'name': 'MANAGER'},
+        {'id': 3, 'name': 'USER'}
+    ])
 
 
 def downgrade() -> None:
