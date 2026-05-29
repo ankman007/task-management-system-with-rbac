@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -12,8 +13,8 @@ class UserAuthProfile(BaseModel):
 
     class Config:
         from_attributes = True
-        
-        
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

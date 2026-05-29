@@ -1,12 +1,13 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from app.models.role import RoleName
+
 
 class RoleBase(BaseModel):
     name: RoleName
 
 
 class RoleCreate(RoleBase):
-    pass 
+    pass
 
 
 class RoleUpdate(RoleBase):

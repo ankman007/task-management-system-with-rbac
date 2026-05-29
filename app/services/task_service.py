@@ -4,14 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.models import RoleName, Task, User
 from app.models.task import TaskStatus
-from app.schemas.task import TaskCreate, TaskUpdate
+from app.schemas.task import TaskCreate
 
 
 class TaskService:
-
     @staticmethod
     def create_task(db: Session, task_in: TaskCreate, current_user: User) -> Task:
-        
+
         # Check to ensure only ADMIN or MANAGER can create tasks.
         if current_user.role.name == RoleName.USER:
             raise HTTPException(
@@ -31,33 +30,33 @@ class TaskService:
         db.refresh(db_task)
         return db_task
 
-
     @staticmethod
     def get_tasks(db: Session, current_user: User) -> List[Task]:
-            
+
         # ADMIN can view every single task in the database
         if current_user.role.name == RoleName.ADMIN:
             return db.query(Task).all()
 
-        # Check to ensure a MANAGER can see a task only if they created it OR if it is assigned to them 
+        # Check to ensure a MANAGER can see a task only if they created it OR if it is assigned to them
         elif current_user.role.name == RoleName.MANAGER:
             return (
                 db.query(Task)
-                .filter((Task.created_by_id == current_user.id) | (Task.assigned_to_id == current_user.id))
+                .filter(
+                    (Task.created_by_id == current_user.id)
+                    | (Task.assigned_to_id == current_user.id)
+                )
                 .all()
             )
 
-        # Check to ensure a USER can only see tasks explicitly assigned to them 
+        # Check to ensure a USER can only see tasks explicitly assigned to them
         else:
-            return (
-                db.query(Task)
-                .filter(Task.assigned_to_id == current_user.id)
-                .all()
-            )
+            return db.query(Task).filter(Task.assigned_to_id == current_user.id).all()
 
     @staticmethod
-    def assign_task(db: Session, task_id: int, assign_to_id: int, current_user: User) -> Task:
-        
+    def assign_task(
+        db: Session, task_id: int, assign_to_id: int, current_user: User
+    ) -> Task:
+
         # Check to ensure only ADMIN or MANAGER can assign tasks.
         if current_user.role.name == RoleName.USER:
             raise HTTPException(
@@ -67,31 +66,39 @@ class TaskService:
 
         task = db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
 
         task.assigned_to_id = assign_to_id
         db.commit()
         db.refresh(task)
         return task
 
-
     @staticmethod
-    def update_status(db: Session, task_id: int, new_status: TaskStatus, current_user: User) -> Task:
-        
+    def update_status(
+        db: Session, task_id: int, new_status: TaskStatus, current_user: User
+    ) -> Task:
+
         task = db.query(Task).filter(Task.id == task_id).first()
-        
+
         if not task:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
 
         # Check to ensure that only assigned users or admins & managers can update the status
-        if (current_user.role.name == RoleName.USER and task.assigned_to_id != current_user.id):
+        if (
+            current_user.role.name == RoleName.USER
+            and task.assigned_to_id != current_user.id
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied. You are not assigned to this task.",
             )
 
         # Check to ensure that tasks cannot transition from COMPLETED back to PENDING
-        if (task.status == TaskStatus.COMPLETED and new_status == TaskStatus.PENDING):
+        if task.status == TaskStatus.COMPLETED and new_status == TaskStatus.PENDING:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Workflow validation error: Completed tasks cannot transition back to Pending status.",
@@ -102,10 +109,9 @@ class TaskService:
         db.refresh(task)
         return task
 
-
     @staticmethod
     def delete_task(db: Session, task_id: int, current_user: User) -> dict:
-        
+
         # Check to ensure that only ADMIN can delete tasks
         if current_user.role.name != RoleName.ADMIN:
             raise HTTPException(
@@ -115,7 +121,9 @@ class TaskService:
 
         task = db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
 
         db.delete(task)
         db.commit()

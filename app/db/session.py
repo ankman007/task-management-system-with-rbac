@@ -11,6 +11,7 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 # This is the 'get_db' dependency function you are missing!
 def get_db():
     db = SessionLocal()

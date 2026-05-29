@@ -2,6 +2,7 @@
 import os
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     # DATABASE_URL: str
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./tasks.db")
@@ -11,5 +12,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
 
 settings = Settings()

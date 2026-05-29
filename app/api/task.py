@@ -18,9 +18,7 @@ def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return TaskService.create_task(
-        db=db, task_in=task_in, current_user=current_user
-    )
+    return TaskService.create_task(db=db, task_in=task_in, current_user=current_user)
 
 
 @router.get("/", response_model=List[TaskResponse])

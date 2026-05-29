@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 from app.models.task import TaskStatus
 
+
 class TaskBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -29,7 +30,7 @@ class TaskResponse(TaskBase):
 
     class Config:
         from_attributes = True
-        
+
 
 class TaskAssignRequest(BaseModel):
     assign_to_id: int
