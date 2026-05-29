@@ -11,7 +11,9 @@ from app.models.user import User
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/signup", response_model=TokenResponse)
+@router.post(
+    "/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
+)
 def signup(user_in: UserCreate, db: Session = Depends(get_db)):
     new_user = UserService.register_new_user(db=db, user_in=user_in)
     tokens = security.generate_auth_tokens(user_id=new_user.id)
