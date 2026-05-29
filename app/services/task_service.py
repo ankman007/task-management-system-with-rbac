@@ -1,5 +1,4 @@
 from typing import List, Optional
-from fastapi import APIRouter, Body, Depends, Query
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -41,19 +40,22 @@ class TaskService:
         search: Optional[str] = None,
         status: Optional[TaskStatus] = None,
     ) -> List[Task]:
-        
+
         query = db.query(Task)
 
         # Check to ensure a MANAGER can see a task only if they created it OR if it is assigned to them
         if current_user.role.name == RoleName.MANAGER:
             query = query.filter(
-                or_(Task.created_by_id == current_user.id, Task.assigned_to_id == current_user.id)
+                or_(
+                    Task.created_by_id == current_user.id,
+                    Task.assigned_to_id == current_user.id,
+                )
             )
-            
+
         # Check to ensure a USER can only see tasks explicitly assigned to them
         elif current_user.role.name == RoleName.USER:
             query = query.filter(Task.assigned_to_id == current_user.id)
-            
+
         # 3. Apply optional status filter
         if status:
             query = query.filter(Task.status == status)
@@ -63,12 +65,12 @@ class TaskService:
             query = query.filter(
                 or_(
                     Task.title.ilike(f"%{search}%"),
-                    Task.description.ilike(f"%{search}%")
+                    Task.description.ilike(f"%{search}%"),
                 )
             )
-        
+
         return query.order_by(Task.due_date.asc()).offset(skip).limit(limit).all()
-    
+
     @staticmethod
     def assign_task(
         db: Session, task_id: int, assign_to_id: int, current_user: User
@@ -112,7 +114,10 @@ class TaskService:
                     detail="Permission denied. You are not assigned to this task.",
                 )
         elif current_user.role.name == RoleName.MANAGER:
-            if task.created_by_id != current_user.id and task.assigned_to_id != current_user.id:
+            if (
+                task.created_by_id != current_user.id
+                and task.assigned_to_id != current_user.id
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Permission denied. Managers can only update status for tasks they created or are assigned to.",

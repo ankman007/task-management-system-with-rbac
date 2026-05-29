@@ -32,10 +32,18 @@ def view_all_tasks(
     search: Optional[str] = Query(
         default=None, description="Search tasks by title or description"
     ),
-    status: Optional[TaskStatus] = Query(default=None, description="Filter tasks by status (PENDING, IN_PROGRESS, COMPLETED)"),
+    status: Optional[TaskStatus] = Query(
+        default=None,
+        description="Filter tasks by status (PENDING, IN_PROGRESS, COMPLETED)",
+    ),
 ):
     return TaskService.get_tasks(
-        db=db, current_user=current_user, limit=limit, skip=skip, search=search, status=status 
+        db=db,
+        current_user=current_user,
+        limit=limit,
+        skip=skip,
+        search=search,
+        status=status,
     )
 
 
