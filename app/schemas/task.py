@@ -29,3 +29,7 @@ class TaskResponse(TaskBase):
 
     class Config:
         from_attributes = True
+        
+
+class TaskAssignRequest(BaseModel):
+    assign_to_id: int
