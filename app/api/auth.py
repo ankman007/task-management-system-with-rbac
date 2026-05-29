@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.user import UserCreate
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.services.user_service import UserService
+from app.services.auth_service import AuthService
 from app.core import security
 from app.models.user import User
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     "/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
 )
 def signup(user_in: UserCreate, db: Session = Depends(get_db)):
-    new_user = UserService.register_new_user(db=db, user_in=user_in)
+    new_user = AuthService.register_new_user(db=db, user_in=user_in)
     tokens = security.generate_auth_tokens(user_id=new_user.id)
 
     return {
@@ -28,7 +28,7 @@ def signup(user_in: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(login_in: LoginRequest, db: Session = Depends(get_db)):
-    user = UserService.authenticate_user(
+    user = AuthService.authenticate_user(
         db=db, email=login_in.email, password=login_in.password
     )
     tokens = security.generate_auth_tokens(user_id=user.id)
