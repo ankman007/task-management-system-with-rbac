@@ -23,7 +23,7 @@ def create_task(
 
 
 @router.get("/", response_model=List[TaskResponse])
-@cache_response(ttl_seconds=60, prefix="tasks") 
+@cache_response(ttl_seconds=60, prefix="tasks")
 def view_all_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

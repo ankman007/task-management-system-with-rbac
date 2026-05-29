@@ -18,10 +18,10 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 def signup(user_in: UserCreate, db: Session = Depends(get_db)):
     new_user = AuthService.register_new_user(db=db, user_in=user_in)
     tokens = security.generate_auth_tokens(user_id=new_user.id)
-    
+
     created_email = user_in.email
     send_welcome_email.delay(created_email)
-    
+
     return {
         "access_token": tokens["access_token"],
         "refresh_token": tokens["refresh_token"],

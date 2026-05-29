@@ -7,6 +7,7 @@ from app.core.dependency import get_current_user
 from app.models import User
 from app.schemas.role import RoleResponse
 from app.services.role_service import RoleService
+
 router = APIRouter(prefix="/roles", tags=["Roles"])
 
 
