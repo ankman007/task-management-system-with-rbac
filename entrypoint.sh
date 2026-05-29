@@ -1,10 +1,11 @@
 #!/bin/sh
-
-# Fail immediately if any command fails
 set -e
 
 echo "🔄 Running database migrations..."
 alembic upgrade head
 
-echo "🚀 Database is up to date. Starting FastAPI application..."
+echo "🧪 Running Test Suite..."
+pytest -p no:cacheprovider
+
+echo "🚀 Tests passed. Starting FastAPI application..."
 exec "$@"

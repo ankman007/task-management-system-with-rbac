@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
-load_dotenv()  
+load_dotenv()
 
 # 1. Fallback to local SQLite only if DATABASE_URL isn't found in the environment
 DEFAULT_SQLITE_URL = "sqlite:///./test.db"

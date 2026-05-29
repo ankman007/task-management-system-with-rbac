@@ -19,6 +19,18 @@ class TaskService:
                 detail="Permission denied. Users cannot create tasks.",
             )
 
+        # Validate assigned user exists only if assigned_to_id is provided
+        if task_in.assigned_to_id is not None:
+            assigned_user = (
+                db.query(User).filter(User.id == task_in.assigned_to_id).first()
+            )
+
+            if not assigned_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Assigned user not found",
+                )
+
         db_task = Task(
             title=task_in.title,
             description=task_in.description,
@@ -88,6 +100,13 @@ class TaskService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
             )
+        assigned_user = db.query(User).filter(User.id == assign_to_id).first()
+
+        if not assigned_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assigned user not found",
+            )
 
         task.assigned_to_id = assign_to_id
         db.commit()
@@ -124,7 +143,7 @@ class TaskService:
                 )
 
         # Check to ensure that tasks cannot transition from COMPLETED back to PENDING
-        if task.status == TaskStatus.COMPLETED and new_status == TaskStatus.PENDING:
+        if task.status == TaskStatus.COMPLETED and new_status != TaskStatus.COMPLETED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Workflow validation error: Completed tasks cannot transition back to Pending status.",
