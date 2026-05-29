@@ -7,11 +7,13 @@ from app.core.dependency import get_current_user
 from app.models import User
 from app.schemas.user import UserResponse
 from app.services.user_service import UserService
+from app.core.decorators import cache_response
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
 @router.get("/", response_model=List[UserResponse])
+@cache_response(ttl_seconds=300, prefix="users")
 def view_all_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

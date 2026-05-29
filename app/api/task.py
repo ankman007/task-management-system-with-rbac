@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.decorators import cache_response
 from app.core.dependency import get_current_user
 from app.db.session import get_db
 from app.models.task import TaskStatus
@@ -22,6 +23,7 @@ def create_task(
 
 
 @router.get("/", response_model=List[TaskResponse])
+@cache_response(ttl_seconds=60, prefix="tasks") 
 def view_all_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

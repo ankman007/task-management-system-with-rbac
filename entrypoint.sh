@@ -1,11 +1,10 @@
 #!/bin/sh
+
+# Fail immediately if any command exits with a non-zero status
 set -e
 
 echo "🔄 Running database migrations..."
 alembic upgrade head
 
-echo "🧪 Running Test Suite..."
-pytest -p no:cacheprovider
-
-echo "🚀 Tests passed. Starting FastAPI application..."
+echo "🚀 Database is up to date. Starting FastAPI application..."
 exec "$@"

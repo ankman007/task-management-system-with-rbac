@@ -7,6 +7,7 @@ from app.schemas.auth import LoginRequest, TokenResponse, RefreshTokenRequest
 from app.services.auth_service import AuthService
 from app.core import security
 from app.models.user import User
+from app.tasks.email_tasks import send_welcome_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -17,7 +18,10 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 def signup(user_in: UserCreate, db: Session = Depends(get_db)):
     new_user = AuthService.register_new_user(db=db, user_in=user_in)
     tokens = security.generate_auth_tokens(user_id=new_user.id)
-
+    
+    created_email = user_in.email
+    send_welcome_email.delay(created_email)
+    
     return {
         "access_token": tokens["access_token"],
         "refresh_token": tokens["refresh_token"],
