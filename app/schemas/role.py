@@ -1,21 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models.role import RoleName
 
 
-class RoleBase(BaseModel):
+class RoleResponse(BaseModel):
+    id: int
     name: RoleName
 
-
-class RoleCreate(RoleBase):
-    pass
-
-
-class RoleUpdate(RoleBase):
-    pass
-
-
-class RoleResponse(RoleBase):
-    id: int
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
