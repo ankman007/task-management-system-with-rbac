@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Body, Depends
+from typing import List, Optional
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.dependency import get_current_user
@@ -25,8 +25,18 @@ def create_task(
 def view_all_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    limit: int = Query(
+        default=10, le=100, description="Maximum number of records to return"
+    ),
+    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
+    search: Optional[str] = Query(
+        default=None, description="Search tasks by title or description"
+    ),
+    status: Optional[TaskStatus] = Query(default=None, description="Filter tasks by status (PENDING, IN_PROGRESS, COMPLETED)"),
 ):
-    return TaskService.get_tasks(db=db, current_user=current_user)
+    return TaskService.get_tasks(
+        db=db, current_user=current_user, limit=limit, skip=skip, search=search, status=status 
+    )
 
 
 @router.patch("/{id}/assign", response_model=TaskResponse)
