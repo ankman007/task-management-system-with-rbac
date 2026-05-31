@@ -3,6 +3,8 @@
 ### Project Overview 
 The Task Management System API is a high-performance backend built with FastAPI and PostgreSQL. It uses strict Role-Based Access Control (RBAC) to isolate user data and securely manage task workflows. To keep client requests fast and unblocked, the system offloads heavy background jobs to a Celery worker queue and optimizes performance using a Redis caching layer.
 
+[Postman Collection](https://documenter.getpostman.com/view/32993281/2sBXwntrnU#77d965fe-1678-44f8-ba80-33b71e04e17a)
+
 ### Project architecture
 ```text
 app/
