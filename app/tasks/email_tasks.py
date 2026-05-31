@@ -10,6 +10,6 @@ def send_welcome_email(user_email: str):
     the user doesn't experience this 5-second delay!
     """
     print(f"✉️ Starting email sequence for {user_email}...")
-    time.sleep(5)  # Mimic slow network SMTP handshake
+    time.sleep(10)  # Mimic slow network SMTP handshake
     print(f"✅ Email successfully sent to {user_email}!")
     return {"status": "sent", "recipient": user_email}

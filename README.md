@@ -1,7 +1,7 @@
 ## Task Management System API with RBAC
 
 ### Project Overview 
-Task Management API System with Role-Based Access Control (RBAC) built in Python with FastAPI, PostgreSQL, SQLAlchemy 2.0 (synchronous), Alembic, Docker, and Docker Compose.
+The Task Management System API is a high-performance backend built with FastAPI and PostgreSQL. It uses strict Role-Based Access Control (RBAC) to isolate user data and securely manage task workflows. To keep client requests fast and unblocked, the system offloads heavy background jobs to a Celery worker queue and optimizes performance using a Redis caching layer.
 
 ### Project architecture
 ```text
@@ -19,10 +19,11 @@ app/
   - JWT authentication with access + refresh tokens.
   - Granular RBAC for `ADMIN`, `MANAGER`, and `USER`.
   - Task workflow enforcing strict transitions: `PENDING -> IN_PROGRESS -> COMPLETED` and blocking completed-to-pending rollback.
+  - Automated testing suite built with Pytest that validates routes, schemas, security gates, and database transactions in an isolated environment.
   - Docker Compose orchestration for API, PostgreSQL, Redis, and Celery worker.
-  - Cursor/offset pagination and multi-parameter filtering/search for users and tasks.
-  - Interactive custom Swagger/OpenAPI UI at `/docs`.
-  - Redis caching decorators for repeated search/page hits.
+  - Pagination and multi-parameter filtering/search for users and tasks.
+  - Interactive custom Swagger docs at `/docs` route.
+  - Redis caching decorators for repeated search and page hits.
   - Asynchronous Celery email worker pipeline for background notification simulation.
 
 ### Omitted requirement 
@@ -57,8 +58,27 @@ app/
 - `auth/refresh` issues new tokens from a valid refresh token.
 - Passwords are hashed with `bcrypt` before storage.
 
+## Test Suite & Validation Coverage
+The repository includes a comprehensive Pytest suite that automatically validates routes, schemas, security gates, and database transactions in an isolated environment.
+
+```text
+tests/
+  ├── conftest.py      # Session-specific mocks, token generation helpers, and user seeds
+  ├── test_auth.py     # JWT generation, registration endpoints, and login verification
+  ├── test_roles.py    # System role validation and RBAC edge-case testing
+  ├── test_users.py    # User profile management and administrative path security
+  └── test_tasks.py    # Workflow status transitions and task restriction gates
+```
+
+To run the test suite locally run run following docker command: 
+```bash
+docker-compose exec web pytest -v --disable-warnings
+```
+
+These tests ensure the API is secure, orderly, and private by locking down user access and data boundaries. They verify that only logged-in users with the right permissions can modify their own tasks, while strictly enforcing that tasks only move forward through their lifecycle phases.
+
 ## Infrastructure & Local Setup Guide
-### Required environment variables (`.env.example` blueprint)
+### Required environment variables
 ```env
 DATABASE_URL=postgresql://admin_user:super_secret_password@db:5432/task_db
 JWT_SECRET_KEY=replace_with_secure_key
