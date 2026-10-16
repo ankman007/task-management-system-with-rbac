@@ -1,29 +1,23 @@
-# Use an official lightweight Python image
-FROM python:3.11-slim
+FROM python:3.14-slim
 
-# Prevent Python from writing .pyc files and enable unbuffered logging
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_ROOT_USER_ACTION=ignore
 
-# Set the working directory inside the container
 WORKDIR /code
 
-# Install system dependencies needed to compile packages like psycopg2
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# psycopg[binary] ships prebuilt wheels, so no compiler/libpq-dev is needed
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copy and install Python dependencies
-COPY requirements.txt /code/
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+COPY . .
 
-# Copy the rest of the application code
-COPY . /code/
+# Strip CRLF in case the repo was checked out on Windows
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh \
+    && useradd --create-home appuser && chown -R appuser /code
 
-# Setup the entrypoint script to run database migrations and start the application
-COPY ./entrypoint.sh /code/entrypoint.sh
-RUN chmod +x /code/entrypoint.sh
+USER appuser
 
-# This guarantees the script runs on EVERY container boot
 ENTRYPOINT ["/code/entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

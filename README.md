@@ -1,193 +1,241 @@
-# Task Management System API with RBAC
+# Task Management API with RBAC
 
-Built with FastAPI and PostgreSQL, featuring strict Role-Based Access Control (RBAC), Redis caching and Celery background workers.
+A FastAPI backend for managing tasks with role-based access control. Admins, managers and users each get a different set of permissions, enforced in a dedicated service layer. PostgreSQL stores the data, Redis caches list endpoints, and a Celery worker handles background jobs.
 
-<!-- Tech Stack Badges -->
+![Python](https://img.shields.io/badge/Python_3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis_8-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Celery](https://img.shields.io/badge/Celery-373737?style=for-the-badge&logo=celery&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)
 
----
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [Key Features & Implemented Requirements](#key-features--implemented-requirements)
-- [Infrastructure & Local Setup Guide](#infrastructure--local-setup-guide)
-  - [Required Environment Variables](#required-environment-variables)
-  - [Docker Compose Deployment](#docker-compose-deployment)
-  - [Runtime Notes](#runtime-notes)
-- [System Architecture & Design](#system-architecture--design)
-  - [System Architecture](#system-architecture)
-  - [Database Design](#database-design)
-- [Security & RBAC Implementation Matrix](#security--rbac-implementation-matrix)
-- [Technical Deep Dive](#technical-deep-dive)
-  - [Architecture & Approach](#architecture--approach)
-  - [JWT Authentication and Password Hashing](#jwt-authentication-and-password-hashing)
-  - [Cache & Background Task Workflows](#cache--background-task-workflows)
-- [Project Structure & Test Suite](#project-structure--test-suite)
-  - [Project Structure](#project-structure)
-  - [Test Suite & Validation Coverage](#test-suite--validation-coverage)
-- [Assumptions & Known Limitations](#assumptions--known-limitations)
+[Postman collection](https://documenter.getpostman.com/view/32993281/2sBXwntrnU#77d965fe-1678-44f8-ba80-33b71e04e17a)
 
 ---
 
-## Project Overview
+## Contents
 
-The Task Management System API is a high-performance backend enterprise solution designed to securely manage task workflows. Built on a foundation of strict Role-Based Access Control (RBAC), the system ensures isolation of user data and granular permission enforcement across different organizational roles. 
-
-To maintain high API responsiveness and unblock the client request lifecycle, the architecture utilizes a dual-layer optimization strategy: offloading intensive background processing to an asynchronous worker pool and implementing low-latency caching for read-heavy operations.
-
-[Postman Collection Documentation](https://documenter.getpostman.com/view/32993281/2sBXwntrnU#77d965fe-1678-44f8-ba80-33b71e04e17a)
-
----
-
-## Key Features & Implemented Requirements
-  - JWT authentication with access + refresh tokens.
-  - Granular RBAC for `ADMIN`, `MANAGER`, and `USER`.
-  - Task workflow enforcing strict transitions: `PENDING -> IN_PROGRESS -> COMPLETED` and blocking completed-to-pending rollback.
-  - Automated testing suite built with Pytest that validates routes, schemas, security gates, and database transactions in an isolated environment.
-  - Docker Compose orchestration for API, PostgreSQL, Redis, and Celery worker.
-  - Pagination and multi-parameter filtering/search for users and tasks.
-  - Interactive custom Swagger docs at `/docs` route.
-  - Redis caching decorators for repeated search and page hits.
-  - Asynchronous Celery email worker pipeline for background notification simulation.
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Using the API](#using-the-api)
+- [Roles and permissions](#roles-and-permissions)
+- [Architecture](#architecture)
+- [Running tests](#running-tests)
+- [Project structure](#project-structure)
+- [Known issues](#known-issues)
 
 ---
 
-## Infrastructure & Local Setup Guide
-### Required environment variables
-```env
-DATABASE_URL=postgresql://admin_user:super_secret_password@db:5432/task_db
-JWT_SECRET_KEY=replace_with_secure_key
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_RESULT_BACKEND=redis://redis:6379/0
-POSTGRES_USER=admin_user
-POSTGRES_PASSWORD=super_secret_password
-POSTGRES_DB=task_db
-```
+## Features
 
-### Docker Compose deployment
-1. Build and start all services:
+- **JWT authentication** with access tokens (30 min) and refresh tokens (7 days). Passwords are hashed with bcrypt.
+- **Three roles** (`ADMIN`, `MANAGER`, `USER`), with permission checks in the service layer rather than in route handlers.
+- **Task status workflow**: `PENDING → IN_PROGRESS → COMPLETED`. A completed task cannot be moved back.
+- **Pagination, search and filtering** on the task and user lists (`limit`, `skip`, `search`, `status`).
+- **Redis caching** on list endpoints through a `@cache_response` decorator.
+- **Background jobs**: sign-up queues a welcome email on a Celery worker, so the request returns immediately.
+- **Database migrations** with Alembic. These run automatically when the API container starts, along with seeding the three roles.
+- **Custom Swagger UI** at `/docs`.
+
+---
+
+## Quick start
+
+You need Docker with the Compose plugin.
+
 ```bash
-docker-compose up --build -d
+git clone <repo-url>
+cd task-management-system-with-rbac
+cp .env.example .env          # then set SECRET_KEY to a long random string
+docker compose up --build -d
 ```
-2. Apply migrations (also executed automatically by `entrypoint.sh`):
+
+When the containers are up, open **http://localhost:18000/docs**.
+
+| Service | Host port | Notes |
+|---|---|---|
+| API | `18000` | Swagger UI at `/docs`, OpenAPI schema at `/openapi.json` |
+| PostgreSQL 17 | `15432` | Data is stored in the `pg17_data` volume |
+| Redis 8 | `16379` | Cache and Celery broker |
+| Celery worker | — | Has no exposed port; it takes jobs from Redis |
+
+The host ports deliberately avoid the defaults (8000, 5432, 6379) so the stack can run alongside other projects. You can change them in `.env`.
+
+Common commands:
+
 ```bash
-docker-compose exec web alembic upgrade head
+docker compose ps                     # service status
+docker compose logs -f web            # API logs
+docker compose logs -f celery_worker  # worker logs
+docker compose down                   # stop (data is kept)
+docker compose down -v                # stop and delete the database volume
 ```
-3. Confirm services are running:
+
+The API container mounts `./app` and runs with `--reload`, so code changes apply without a rebuild. Rebuild after changing `requirements.txt`.
+
+---
+
+## Configuration
+
+All settings are read from `.env`. Compose passes the file to the API and worker containers.
+
+| Variable | Default in `.env.example` | Purpose |
+|---|---|---|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `admin_user` / `super_secret_password` / `task_db` | Credentials the Postgres container is created with |
+| `DATABASE_URL` | `postgresql://admin_user:super_secret_password@db:5432/task_db` | SQLAlchemy connection string (uses the psycopg 3 driver) |
+| `SECRET_KEY` | `replace_with_secure_key` | Key for signing JWTs. **Always change it.** If it's missing, the app falls back to an insecure default. |
+| `CELERY_BROKER_URL` | `redis://redis:6379/0` | Redis used by Celery and by the response cache |
+| `CELERY_RESULT_BACKEND` | `redis://redis:6379/0` | Where Celery stores task results |
+| `API_HOST_PORT` / `DB_HOST_PORT` / `REDIS_HOST_PORT` | `18000` / `15432` / `16379` | Ports published on the host |
+
+Inside the Docker network, services reach each other by service name (`db:5432`, `redis:6379`). The host ports above are only for access from your machine. For example, to connect a database client:
+
+```text
+postgresql://admin_user:super_secret_password@localhost:15432/task_db
+```
+
+---
+
+## Using the API
+
+### First steps
+
+1. **Sign up.** Call `POST /auth/signup`. Role IDs are seeded as `1 = ADMIN`, `2 = MANAGER`, `3 = USER`.
+   ```json
+   { "email": "admin@example.com", "password": "Passw0rd!", "role_id": 1 }
+   ```
+2. **Authorise.** Copy the `access_token` from the response, click **Authorize** in Swagger, and paste it in.
+3. **Create a task** as an admin or manager, assign it to a user, then move it through the workflow as that user.
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/auth/signup` | Register. Returns tokens and the user, and queues a welcome email |
+| `POST` | `/auth/login` | Exchange email and password for access and refresh tokens |
+| `POST` | `/auth/refresh` | Exchange a refresh token for a new pair of tokens |
+| `GET` | `/tasks/` | List tasks visible to the caller. Supports `limit`, `skip`, `search` and `status` |
+| `POST` | `/tasks/` | Create a task, optionally with `assigned_to_id` and a future `due_date` |
+| `PATCH` | `/tasks/{id}/assign` | Assign a task: `{ "assign_to_id": 3 }` |
+| `PATCH` | `/tasks/{id}/status` | Change status: `{ "status": "IN_PROGRESS" }` |
+| `DELETE` | `/tasks/{id}` | Delete a task |
+| `GET` | `/users/` | List users. Supports `limit`, `skip` and `search` (email) |
+| `GET` | `/roles/` | List roles |
+
+### Status codes
+
+| Code | When it's returned |
+|---|---|
+| `201` | User created |
+| `400` | Duplicate email, or a disallowed status change |
+| `401` | Missing, invalid or expired token, or wrong credentials |
+| `403` | The caller's role isn't allowed to perform the action |
+| `404` | The task, user or role doesn't exist |
+| `422` | The request body failed validation (for example, a `due_date` in the past) |
+
+---
+
+## Roles and permissions
+
+| Action | `ADMIN` | `MANAGER` | `USER` |
+|---|:---:|:---:|:---:|
+| Create tasks | ✅ | ✅ | ❌ |
+| View tasks | ✅ all | ✅ created by or assigned to them | ✅ assigned to them |
+| Assign tasks | ✅ | ✅ | ❌ |
+| Update task status | ✅ | ✅ created by or assigned to them | ✅ assigned to them |
+| Delete tasks | ✅ | ❌ | ❌ |
+| List users | ✅ | ❌ | ❌ |
+| List roles | ✅ | ❌ | ❌ |
+
+All checks are in `app/services/*`. Routes only resolve the current user (`Depends(get_current_user)`) and pass it to the service.
+
+**Status rule:** once a task is `COMPLETED`, it can't move to any other status.
+
+---
+
+## Architecture
+
+<img width="1536" height="886" alt="System architecture diagram" src="https://github.com/user-attachments/assets/5e960796-4f71-4f7f-8da5-d9175a16f2ea" />
+
+- **FastAPI (`web`)** handles HTTP, validation and authentication. Database access is synchronous (SQLAlchemy 2.1 with psycopg 3), and FastAPI runs those handlers in its threadpool.
+- **PostgreSQL** is the source of truth for users, roles and tasks. The schema is managed by Alembic.
+- **Redis** has two jobs: it caches list responses, and it acts as the Celery broker and result backend.
+- **Celery (`celery_worker`)** runs slow work outside the request. Right now that is a simulated welcome email (`app/tasks/email_tasks.py`).
+
+On startup, `entrypoint.sh` runs `alembic upgrade head` and `seed.py`, but only when `RUN_MIGRATIONS=1`. Only the API service sets it, so the worker never runs migrations at the same time.
+
+### Data model
+
+<img width="1368" height="371" alt="ER diagram" src="https://github.com/user-attachments/assets/5eecea40-c968-4f84-95fe-cea0d6f6cb1c" />
+
+- `roles`: `id`, `name` (enum `ADMIN | MANAGER | USER`)
+- `users`: `id`, `email` (unique), `hashed_password`, `role_id → roles.id`
+- `tasks`: `id`, `title`, `description`, `status` (enum), `due_date`, `assigned_to_id → users.id` (set to null when the user is deleted), `created_by_id → users.id` (the task is deleted with its creator)
+
+---
+
+## Running tests
+
+The suite (75 tests) uses an in-memory SQLite database and FastAPI's `TestClient`, so it doesn't touch the Postgres data.
+
 ```bash
-docker-compose ps
+# inside the running stack
+docker compose exec web pytest -q
+
+# or in a throwaway container
+docker compose run --rm --no-deps -e RUN_MIGRATIONS=0 web pytest -q
 ```
-4. Open API docs `http://localhost:8000/docs`
 
-### Runtime notes
-- API service listens on port `8000`.
-- PostgreSQL listens on port `5432`.
-- Redis listens on port `6379`.
-- Celery worker runs as a separate container and consumes tasks from Redis.
+| File | What it covers |
+|---|---|
+| `tests/test_auth.py` | Sign-up, login, refresh, token validation |
+| `tests/test_roles.py` | Role listing and admin-only access |
+| `tests/test_users.py` | User listing, pagination, search, permissions |
+| `tests/test_tasks.py` | Task creation, visibility per role, assignment, status workflow, deletion |
 
----
+**Current result: 72 passed, 3 failed, 22 errors.** All the failures and errors come from the caching bug described under [Known issues](#known-issues).
 
-## System Architecture & Design
+### Running without Docker
 
-### System Architecture
-<img width="1536" height="886" alt="System_Architecture_Diagram_Task_Management_System" src="https://github.com/user-attachments/assets/5e960796-4f71-4f7f-8da5-d9175a16f2ea" />
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pytest -q
+```
 
-The system is built around a FastAPI application that handles authentication, authorization, and task management logic. PostgreSQL serves as the primary datastore for users, roles, and tasks, while Redis is used for response caching and as the message broker for Celery. Background jobs, such as welcome email processing, are delegated to Celery workers to keep API requests fast and responsive.
-
-### Database Design
-<img width="1368" height="371" alt="ER_Diagram_Task Management System" src="https://github.com/user-attachments/assets/5eecea40-c968-4f84-95fe-cea0d6f6cb1c" />
-
-The data model consists of three core entities: Roles, Users, and Tasks. Each user is assigned a single role that determines their permissions, while tasks are linked to both a creator and an optional assignee. This structure enables strict role-based access control and clear ownership and assignment relationships throughout the task lifecycle.
-
-## Security & RBAC Implementation Matrix
-| Role | View all users | View/Create tasks | Assign tasks | Update task status | Delete tasks | Status workflow enforcement |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `ADMIN` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `MANAGER` | ❌ | ✅ | ✅ | ✅ (own or assigned tasks only) | ❌ | ✅ |
-| `USER` | ❌ | ❌ | ❌ | ✅ (assigned tasks only) | ❌ | ✅ |
-
-- `ADMIN` has global visibility and deletion rights.
-- `MANAGER` can create/assign tasks and manage status for tasks they created or are assigned to.
-- `USER` can only view and update the status of tasks assigned to them.
+To run the API itself outside Docker, point `DATABASE_URL` and `CELERY_BROKER_URL` in `.env` at `localhost:15432` and `localhost:16379`. Then run `alembic upgrade head` and `uvicorn app.main:app --reload`.
 
 ---
 
-## Technical Deep Dive
+## Project structure
 
-### Architecture & Approach
-- The system uses separation of concerns:
-  - `app/api/*` defines HTTP routers and request validation.
-  - `app/services/*` contains domain/business logic and permission enforcement.
-  - `app/models/*` defines SQLAlchemy ORM entities.
-  - `app/schemas/*` defines Pydantic request/response contracts.
-  - `app/core/*` handles configuration, security, Redis caching, Celery, and Swagger customization.
-- Design rationale:
-  - Synchronous DB access keeps the API footprint lean and avoids added complexity from async drivers like `asyncpg`.
-  - Redis caching is layered independently to accelerate read-heavy endpoints without changing the DB model.
-  - Celery is isolated as a worker service for expensive or delayed operations (simulated email notifications), so API responsiveness is preserved.
- 
-### JWT Authentication and Password Hashing
-- Authentication is implemented via JWT bearer tokens.
-- `auth/login` issues access and refresh tokens.
-- `auth/refresh` issues new tokens from a valid refresh token.
-- Passwords are hashed with `bcrypt` before storage.
-
-### Cache & Background Task Workflows
-
-- Redis caching is applied via `@cache_response(ttl_seconds=..., prefix=...)` on list endpoints.
-- The decorator builds a unique cache key from request query parameters while excluding runtime-only dependencies like `db` and `current_user`.
-- Cached responses accelerate repeated page and search hits for tasks and users.
-- Celery is configured in `app/core/celery_app.py` and runs in the `celery_worker` container.
-- The sign-up flow uses `send_welcome_email.delay()` to enqueue email processing off the main request path.
-
----
-
-## Project Structure & Test Suite
-
-### Project Structure
 ```text
 app/
-├── api/       # Routes / Endpoints
-├── core/      # Security (JWT, Hashing), Config
-├── db/        # Session setup, Base model
-├── models/    # SQLAlchemy models
-├── schemas/   # Pydantic validation models
-├── services/  # Business logic (DB queries, RBAC checks)
-└── main.py    # FastAPI app initialization
+├── api/         # Routers: auth, tasks, users, roles
+├── core/        # JWT/bcrypt, auth dependency, Redis client, cache decorator, Celery app, Swagger setup
+├── db/          # Engine, session factory, declarative base
+├── models/      # SQLAlchemy models: Role, User, Task
+├── schemas/     # Pydantic request/response models
+├── services/    # Business logic and permission checks
+├── tasks/       # Celery tasks
+└── main.py      # App factory and lifespan (Redis pool)
+alembic/         # Migration environment and versions
+tests/           # Pytest suite
+seed.py          # Inserts the three roles if missing
+entrypoint.sh    # Runs migrations and seeding, then starts the given command
 ```
-
-### Test Suite & Validation Coverage
-The repository includes a comprehensive Pytest suite that automatically validates routes, schemas, security gates, and database transactions in an isolated environment.
-
-```text
-tests/
-  ├── conftest.py      # Session-specific mocks, token generation helpers, and user seeds
-  ├── test_auth.py     # JWT generation, registration endpoints, and login verification
-  ├── test_roles.py    # System role validation and RBAC edge-case testing
-  ├── test_users.py    # User profile management and administrative path security
-  └── test_tasks.py    # Workflow status transitions and task restriction gates
-```
-
-To run the test suite locally run run following docker command: 
-```bash
-docker-compose exec web pytest -v --disable-warnings
-```
-
-These tests ensure the API is secure, orderly, and private by locking down user access and data boundaries. They verify that only logged-in users with the right permissions can modify their own tasks, while strictly enforcing that tasks only move forward through their lifecycle phases.
 
 ---
 
-## Assumptions & Known Limitations
-- Database access remains synchronous by design; there is no async DB engine or async SQLAlchemy session.
+## Known issues
 
-- PostgreSQL is connected through `psycopg2` and standard synchronous session management.
+These are known bugs that haven't been fixed yet:
 
-- Initial setup assumes role seed data exists or is inserted before user registration.
-
-- The task workflow intentionally blocks transitions from `COMPLETED` back to `PENDING`, enforcing forward-only status progression.
+- **Cache responses are shared across users.** The key in `app/core/decorators.py` is built from query parameters only, not from who is calling. A cached admin response to `GET /users/` or `GET /tasks/` can therefore be returned to other users, which bypasses the role checks.
+- **The cache is never cleared on writes.** Creating, assigning, updating or deleting a task doesn't remove cached lists, so they stay stale for up to 60 seconds (5 minutes for users).
+- **The cache decorator uses the wrong event loop.** It runs async Redis calls on a new event loop inside a worker thread, using a connection pool created on the main loop. Under load, and in the test suite, this fails with `attached to a different loop`.
+- **Sign-up accepts any role.** `POST /auth/signup` lets the caller choose `role_id`, so anyone can register as an admin. New users should get `USER`, and only admins should be able to grant roles.
+- **Statuses can be skipped.** A task can go straight from `PENDING` to `COMPLETED`, because only moves out of `COMPLETED` are blocked. The error message for that case always mentions "Pending", whichever status was requested.
+- **Unused config file.** `app/core/config.py` defines a `JWT_SECRET_KEY` setting that nothing imports. The key actually used is `SECRET_KEY`, in `app/core/security.py`.
