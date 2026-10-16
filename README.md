@@ -19,6 +19,7 @@ A FastAPI backend for managing tasks with role-based access control. Admins, man
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
+- [Frontend](#frontend)
 - [Using the API](#using-the-api)
 - [Roles and permissions](#roles-and-permissions)
 - [Architecture](#architecture)
@@ -38,6 +39,7 @@ A FastAPI backend for managing tasks with role-based access control. Admins, man
 - **Background jobs**: sign-up queues a welcome email on a Celery worker, so the request returns immediately.
 - **Database migrations** with Alembic. These run automatically when the API container starts, along with seeding the three roles.
 - **Custom Swagger UI** at `/docs`.
+- **Web dashboard** in plain HTML, CSS and JavaScript, with the UI adapted to each role.
 
 ---
 
@@ -52,10 +54,11 @@ cp .env.example .env          # then set SECRET_KEY to a long random string
 docker compose up --build -d
 ```
 
-When the containers are up, open **http://localhost:18000/docs**.
+When the containers are up, open the dashboard at **http://localhost:18080**, or the API docs at **http://localhost:18000/docs**.
 
 | Service | Host port | Notes |
 |---|---|---|
+| Frontend (nginx) | `18080` | Dashboard UI; also proxies API calls to the `web` service |
 | API | `18000` | Swagger UI at `/docs`, OpenAPI schema at `/openapi.json` |
 | PostgreSQL 17 | `15432` | Data is stored in the `pg17_data` volume |
 | Redis 8 | `16379` | Cache and Celery broker |
@@ -88,13 +91,36 @@ All settings are read from `.env`. Compose passes the file to the API and worker
 | `SECRET_KEY` | `replace_with_secure_key` | Key for signing JWTs. **Always change it.** If it's missing, the app falls back to an insecure default. |
 | `CELERY_BROKER_URL` | `redis://redis:6379/0` | Redis used by Celery and by the response cache |
 | `CELERY_RESULT_BACKEND` | `redis://redis:6379/0` | Where Celery stores task results |
-| `API_HOST_PORT` / `DB_HOST_PORT` / `REDIS_HOST_PORT` | `18000` / `15432` / `16379` | Ports published on the host |
+| `API_HOST_PORT` / `DB_HOST_PORT` / `REDIS_HOST_PORT` / `FRONTEND_HOST_PORT` | `18000` / `15432` / `16379` / `18080` | Ports published on the host |
 
 Inside the Docker network, services reach each other by service name (`db:5432`, `redis:6379`). The host ports above are only for access from your machine. For example, to connect a database client:
 
 ```text
 postgresql://admin_user:super_secret_password@localhost:15432/task_db
 ```
+
+---
+
+## Frontend
+
+A small dashboard in `frontend/`, written in plain HTML, CSS and JavaScript with Lucide icons. There is no build step.
+
+| Page | What it does |
+|---|---|
+| `login.html` / `signup.html` | Sign in or register. Tokens are stored in `localStorage`. |
+| Dashboard | Task counts by status and the five most recent tasks |
+| Tasks | Search, status filter, pagination, a status dropdown per row, and dialogs to create, assign and delete tasks |
+| Users (admin) | User list with search and role badges |
+| Roles (admin) | The three roles and a permission comparison |
+
+Buttons the current role can't use are hidden, but the API still enforces every rule. When the access token expires, the app silently gets a new one with the refresh token. If that also fails, it returns to the sign-in page.
+
+**How it reaches the API.** The `frontend` service (nginx) serves the files and forwards `/auth`, `/tasks`, `/users` and `/roles` to FastAPI, so the browser only ever talks to one origin. This matters because the API doesn't send CORS headers: a page on another origin calling `:18000` directly would be blocked. The proxy config is in `nginx/default.conf`.
+
+**Limitations that come from the API:**
+- Tasks only include user IDs, and only admins can list users. Admins therefore see assignee emails, while managers see "You" or "User #id" and assign tasks by entering a user ID.
+- Tasks have no creation date, so "Recent tasks" means the tasks with the highest IDs.
+- Because of the cache issues described under [Known issues](#known-issues), a new or changed task can take up to 60 seconds to appear in lists.
 
 ---
 
@@ -221,6 +247,8 @@ app/
 ├── services/    # Business logic and permission checks
 ├── tasks/       # Celery tasks
 └── main.py      # App factory and lifespan (Redis pool)
+frontend/        # Static dashboard (HTML, CSS, vanilla JS)
+nginx/           # nginx config: serves frontend/ and proxies the API
 alembic/         # Migration environment and versions
 tests/           # Pytest suite
 seed.py          # Inserts the three roles if missing
