@@ -67,7 +67,9 @@ def upgrade() -> None:
     # Manually append this to the absolute bottom of upgrade():
     # 1. Define a minimal structural representation of the roles table
     roles_table = sa.table(
-        "roles", sa.column("id", sa.Integer), sa.column("name", sa.String)
+        "roles",
+        sa.column("id", sa.Integer),
+        sa.column("name", sa.Enum("ADMIN", "MANAGER", "USER", name="rolename")),
     )
 
     # 2. Perform the bulk insert safely during migration execution
