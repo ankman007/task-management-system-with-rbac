@@ -1,59 +1,61 @@
-version: '3.8'
-
+# Host ports are configurable via .env (defaults avoid the common 5432/6379/8000)
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     container_name: task_manager_db
     environment:
-      - POSTGRES_USER=admin_user
-      - POSTGRES_PASSWORD=super_secret_password
-      - POSTGRES_DB=task_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "${DB_HOST_PORT:-15432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    # Add a health check so Docker knows when Postgres is ACTUALLY ready to accept connections
+      - pg17_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin_user -d task_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: task_manager_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   web:
     build: .
+    image: task_manager_app
     container_name: task_manager_api
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql://admin_user:super_secret_password@db:5432/task_db
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      RUN_MIGRATIONS: "1"
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-18000}:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/code/app
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
   celery_worker:
-    build: .
+    image: task_manager_app
     container_name: task_manager_worker
-    environment:
-      - DATABASE_URL=postgresql://admin_user:super_secret_password@db:5432/task_db
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    env_file: .env
     command: celery -A app.core.celery_app worker --loglevel=info
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
+      web:
         condition: service_started
+      redis:
+        condition: service_healthy
 
 volumes:
-  postgres_data:
+  pg17_data:
