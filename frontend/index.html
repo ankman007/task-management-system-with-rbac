@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="app">
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><i data-lucide="check"></i></span>
+        Task Manager
+      </div>
+
+      <nav class="nav">
+        <a class="nav-link" href="#dashboard" data-page="dashboard"><i data-lucide="layout-dashboard"></i>Dashboard</a>
+        <a class="nav-link" href="#tasks" data-page="tasks"><i data-lucide="list-checks"></i>Tasks</a>
+      </nav>
+
+      <div class="admin-only" hidden>
+        <div class="nav-section">Admin</div>
+        <nav class="nav">
+          <a class="nav-link" href="#users" data-page="users"><i data-lucide="users"></i>Users</a>
+          <a class="nav-link" href="#roles" data-page="roles"><i data-lucide="shield-check"></i>Roles</a>
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="user-card">
+          <span class="avatar" id="user-avatar"></span>
+          <div class="user-meta">
+            <div class="user-email" id="user-email"></div>
+            <span id="user-role"></span>
+          </div>
+        </div>
+        <button class="logout-btn" id="logout-btn" type="button"><i data-lucide="log-out"></i>Log out</button>
+      </div>
+    </aside>
+    <div class="backdrop" id="backdrop"></div>
+
+    <!-- Main area -->
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open menu"><i data-lucide="menu"></i></button>
+        <h1 id="page-title">Dashboard</h1>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" id="new-task-btn" type="button" hidden>
+            <i data-lucide="plus"></i><span class="btn-label">New task</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="content">
+        <!-- Dashboard -->
+        <section id="page-dashboard" class="page" hidden>
+          <div class="page-header">
+            <h2 id="greeting">Overview</h2>
+            <p id="dashboard-scope"></p>
+          </div>
+
+          <div class="stats">
+            <div class="card stat stat-total">
+              <div class="stat-top">Total tasks <span class="stat-icon"><i data-lucide="layers"></i></span></div>
+              <div class="stat-value" id="stat-total">–</div>
+            </div>
+            <div class="card stat stat-pending">
+              <div class="stat-top">Pending <span class="stat-icon"><i data-lucide="circle-dashed"></i></span></div>
+              <div class="stat-value" id="stat-pending">–</div>
+            </div>
+            <div class="card stat stat-progress">
+              <div class="stat-top">In progress <span class="stat-icon"><i data-lucide="loader-circle"></i></span></div>
+              <div class="stat-value" id="stat-progress">–</div>
+            </div>
+            <div class="card stat stat-completed">
+              <div class="stat-top">Completed <span class="stat-icon"><i data-lucide="circle-check"></i></span></div>
+              <div class="stat-value" id="stat-completed">–</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Recent tasks</h3>
+              <a href="#tasks">View all</a>
+            </div>
+            <div class="table-wrap" id="recent-tasks"></div>
+          </div>
+        </section>
+
+        <!-- Tasks -->
+        <section id="page-tasks" class="page" hidden>
+          <div class="toolbar">
+            <label class="input-icon">
+              <i data-lucide="search"></i>
+              <input class="input" id="task-search" type="search" placeholder="Search title or description" aria-label="Search tasks">
+            </label>
+            <select class="select" id="task-status-filter" aria-label="Filter by status">
+              <option value="">All statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="IN_PROGRESS">In progress</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap" id="tasks-table"></div>
+            <div class="pager" id="tasks-pager" hidden>
+              <span id="tasks-range"></span>
+              <div class="pager-buttons">
+                <button class="btn btn-secondary" data-pager="tasks" data-dir="-1" type="button">Previous</button>
+                <button class="btn btn-secondary" data-pager="tasks" data-dir="1" type="button">Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Users (admin) -->
+        <section id="page-users" class="page" hidden>
+          <div class="toolbar">
+            <label class="input-icon">
+              <i data-lucide="search"></i>
+              <input class="input" id="user-search" type="search" placeholder="Search by email" aria-label="Search users">
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap" id="users-table"></div>
+            <div class="pager" id="users-pager" hidden>
+              <span id="users-range"></span>
+              <div class="pager-buttons">
+                <button class="btn btn-secondary" data-pager="users" data-dir="-1" type="button">Previous</button>
+                <button class="btn btn-secondary" data-pager="users" data-dir="1" type="button">Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Roles (admin) -->
+        <section id="page-roles" class="page" hidden>
+          <div class="page-header">
+            <h2>Roles</h2>
+            <p>Each user has exactly one role. Permissions are enforced by the API.</p>
+          </div>
+          <div id="roles-list"></div>
+
+          <div class="card">
+            <div class="card-header"><h3>Permissions</h3></div>
+            <div class="table-wrap">
+              <table class="table matrix">
+                <thead>
+                  <tr><th>Action</th><th>Admin</th><th>Manager</th><th>User</th></tr>
+                </thead>
+                <tbody id="permissions-matrix"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create task -->
+  <dialog class="dialog" id="create-dialog" aria-labelledby="create-title">
+    <form id="create-form" novalidate>
+      <div class="dialog-header">
+        <h3 id="create-title">New task</h3>
+        <button class="icon-btn" type="button" data-close aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="dialog-body">
+        <div class="alert alert-error form-error" role="alert" hidden></div>
+        <div class="field">
+          <label for="create-title-input">Title</label>
+          <input class="input" id="create-title-input" name="title" maxlength="100" placeholder="e.g. Prepare quarterly report" required>
+        </div>
+        <div class="field">
+          <label for="create-description">Description <span class="faint">(optional)</span></label>
+          <textarea class="textarea" id="create-description" name="description" placeholder="Add more detail…"></textarea>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="create-due">Due date <span class="faint">(optional)</span></label>
+            <input class="input" id="create-due" name="due" type="datetime-local">
+          </div>
+          <div class="field assignee-field"></div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn btn-secondary" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" type="submit">Create task</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Assign task -->
+  <dialog class="dialog" id="assign-dialog" aria-labelledby="assign-title">
+    <form id="assign-form" novalidate>
+      <div class="dialog-header">
+        <h3 id="assign-title">Assign task</h3>
+        <button class="icon-btn" type="button" data-close aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="dialog-body">
+        <p id="assign-task-name"></p>
+        <div class="alert alert-error form-error" role="alert" hidden></div>
+        <div class="field assignee-field"></div>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn btn-secondary" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" type="submit">Assign</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Delete task -->
+  <dialog class="dialog" id="delete-dialog" aria-labelledby="delete-title">
+    <form id="delete-form">
+      <div class="dialog-header">
+        <h3 id="delete-title">Delete task?</h3>
+        <button class="icon-btn" type="button" data-close aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="dialog-body">
+        <p id="delete-task-name"></p>
+        <div class="alert alert-error form-error" role="alert" hidden></div>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn btn-secondary" type="button" data-close>Cancel</button>
+        <button class="btn btn-danger" type="submit">Delete task</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

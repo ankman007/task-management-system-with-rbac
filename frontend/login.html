@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Task Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="login">
+  <div class="auth-shell">
+    <aside class="auth-aside">
+      <div class="brand">
+        <span class="brand-mark"><i data-lucide="check"></i></span>
+        Task Manager
+      </div>
+
+      <div class="auth-pitch">
+        <h2>Plan, assign and ship work with the right access for everyone.</h2>
+        <p>A FastAPI task management system with role-based access control.</p>
+        <ul class="feature-list">
+          <li><span class="feature-icon"><i data-lucide="shield-check"></i></span>Admin, Manager and User roles</li>
+          <li><span class="feature-icon"><i data-lucide="git-branch"></i></span>Pending → In progress → Completed workflow</li>
+          <li><span class="feature-icon"><i data-lucide="key-round"></i></span>JWT access and refresh tokens</li>
+        </ul>
+      </div>
+
+      <small>FastAPI · PostgreSQL · Redis · Celery</small>
+    </aside>
+
+    <main class="auth-main">
+      <div class="auth-card">
+        <h1>Welcome back</h1>
+        <p class="subtitle">Sign in to your workspace.</p>
+
+        <div id="form-notice" class="alert alert-info" hidden>
+          <i data-lucide="clock"></i>
+          <span>Your session expired. Please sign in again.</span>
+        </div>
+        <div id="form-error" class="alert alert-error" role="alert" hidden></div>
+
+        <form id="login-form" novalidate>
+          <div class="field">
+            <label for="email">Email</label>
+            <input class="input" id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com" required>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input class="input" id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+        </form>
+
+        <p class="auth-switch">Don't have an account? <a href="signup.html">Create one</a></p>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+</body>
+</html>
