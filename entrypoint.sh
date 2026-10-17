@@ -1,12 +1,15 @@
 #!/bin/sh
+# Container entrypoint: optionally migrate and seed, then hand off to CMD.
 set -e
 
-# Only the API container runs migrations/seeding, so the worker doesn't race it
+# Only the API service sets RUN_MIGRATIONS=1; one-off containers (tests,
+# `docker compose run api ...`) skip it unless asked.
 if [ "${RUN_MIGRATIONS:-0}" = "1" ]; then
-    echo "Running database migrations..."
+    echo "entrypoint: applying database migrations"
     alembic upgrade head
-    echo "Seeding default roles..."
-    python seed.py
+    echo "entrypoint: ensuring the first admin account"
+    python -m scripts.seed_admin
 fi
 
+# exec so the app becomes PID 1 and receives SIGTERM from `docker stop`.
 exec "$@"

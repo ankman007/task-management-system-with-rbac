@@ -1,9 +1,39 @@
-.git
+# Keep the build context small and free of secrets. The Dockerfile copies
+# only app/, alembic/, scripts/, tests/ and a few top-level files.
+
+# Secrets and local configuration
 .env
+.env.*
+
+# VCS, editors, OS cruft
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Python environments, caches and build output
 .venv
 venv
 env
 __pycache__
-*.pyc
+*.py[cod]
 .pytest_cache
-*.db
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+build
+dist
+*.egg-info
+
+# Not needed inside the API image (the frontend is served by nginx)
+frontend
+nginx
+docs
+*.md
+docker-compose*.yml
+Dockerfile
+.dockerignore
