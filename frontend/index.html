@@ -95,10 +95,6 @@
         <!-- Tasks -->
         <section id="page-tasks" class="page" hidden>
           <div class="toolbar">
-            <label class="input-icon">
-              <i data-lucide="search"></i>
-              <input class="input" id="task-search" type="search" placeholder="Search title or description" aria-label="Search tasks">
-            </label>
             <select class="select" id="task-status-filter" aria-label="Filter by status">
               <option value="">All statuses</option>
               <option value="PENDING">Pending</option>
@@ -121,13 +117,6 @@
 
         <!-- Users (admin) -->
         <section id="page-users" class="page" hidden>
-          <div class="toolbar">
-            <label class="input-icon">
-              <i data-lucide="search"></i>
-              <input class="input" id="user-search" type="search" placeholder="Search by email" aria-label="Search users">
-            </label>
-          </div>
-
           <div class="card">
             <div class="table-wrap" id="users-table"></div>
             <div class="pager" id="users-pager" hidden>
@@ -184,7 +173,7 @@
         <div class="field-row">
           <div class="field">
             <label for="create-due">Due date <span class="faint">(optional)</span></label>
-            <input class="input" id="create-due" name="due" type="datetime-local">
+            <input class="input" id="create-due" name="due" type="date">
           </div>
           <div class="field assignee-field"></div>
         </div>

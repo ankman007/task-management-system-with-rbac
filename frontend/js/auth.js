@@ -2,9 +2,6 @@
 
 const SESSION_KEY = "task_manager_session";
 
-// Role IDs as seeded by the initial migration / seed.py.
-const ROLE_NAMES = { 1: "ADMIN", 2: "MANAGER", 3: "USER" };
-
 function getSession() {
   try {
     return JSON.parse(localStorage.getItem(SESSION_KEY));
@@ -13,8 +10,15 @@ function getSession() {
   }
 }
 
-function saveSession({ access_token, refresh_token, user }) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ access_token, refresh_token, user }));
+function saveSession({ access_token, user }) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ access_token, user }));
+}
+
+// Log in, then load the profile (id, email, role) the dashboard needs.
+async function signIn(email, password) {
+  const { access_token } = await Api.login(email, password);
+  const user = await Api.me(access_token);
+  saveSession({ access_token, user });
 }
 
 function clearSession() {
@@ -73,8 +77,7 @@ function initLoginPage() {
     setButtonBusy(button, true, "Signing in…");
 
     try {
-      const data = await Api.login(form.email.value.trim(), form.password.value);
-      saveSession(data);
+      await signIn(form.email.value.trim(), form.password.value);
       location.replace("index.html");
     } catch (err) {
       showFormError(error, err.message);
@@ -102,8 +105,9 @@ function initSignupPage() {
     setButtonBusy(button, true, "Creating account…");
 
     try {
-      const data = await Api.signup(form.email.value.trim(), form.password.value, Number(form.role.value));
-      saveSession(data);
+      const email = form.email.value.trim();
+      await Api.register(email, form.password.value);
+      await signIn(email, form.password.value);
       location.replace("index.html");
     } catch (err) {
       showFormError(error, err.message);

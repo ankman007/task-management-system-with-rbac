@@ -12,22 +12,34 @@ const state = {
   user: null,
   role: null,
   page: null,
-  users: new Map(), // id -> user; only admins can list users
-  tasks: { skip: 0, search: "", status: "", items: [] },
-  usersList: { skip: 0, search: "" },
+  users: new Map(), // id -> user; admins and managers can list users
+  tasks: { page: 1, status: "", items: [] },
+  usersList: { page: 1 },
   activeTask: null, // task targeted by the assign / delete dialogs
 };
 
 // What the current role may do. This only hides UI; the API enforces it.
 const can = {
   createTask: () => state.role !== "USER",
-  assignTask: () => state.role !== "USER",
+  assignTask: (task) => state.role === "ADMIN" || (state.role === "MANAGER" && ownsTask(task)),
   deleteTask: () => state.role === "ADMIN",
   viewAdmin: () => state.role === "ADMIN",
+  listUsers: () => state.role !== "USER",
   updateStatus: (task) =>
     state.role === "ADMIN" ||
-    task.assigned_to_id === state.user.id ||
-    (state.role === "MANAGER" && task.created_by_id === state.user.id),
+    task.assigned_to === state.user.id ||
+    (state.role === "MANAGER" && task.created_by === state.user.id),
+};
+
+function ownsTask(task) {
+  return task.created_by === state.user.id || task.assigned_to === state.user.id;
+}
+
+// Mirrors ALLOWED_TRANSITIONS in app/services/task_service.py.
+const TRANSITIONS = {
+  PENDING: ["IN_PROGRESS", "COMPLETED"],
+  IN_PROGRESS: ["PENDING", "COMPLETED"],
+  COMPLETED: ["IN_PROGRESS"],
 };
 
 const PAGES = {
@@ -49,14 +61,6 @@ function escapeHtml(value) {
 
 function refreshIcons() {
   lucide.createIcons();
-}
-
-function debounce(fn, ms = 300) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
 }
 
 function toast(message, type = "success") {
@@ -122,12 +126,15 @@ function errorState(message) {
   </div>`;
 }
 
-function setPager(name, skip, count) {
+function setPager(name, { page, size, total, pages, items }) {
   const pager = $(`#${name}-pager`);
-  const hasPrev = skip > 0;
-  const hasNext = count === PAGE_SIZE;
+  const hasPrev = page > 1;
+  const hasNext = page < pages;
+  const start = (page - 1) * size;
   pager.hidden = !hasPrev && !hasNext;
-  $(`#${name}-range`).textContent = count ? `Showing ${skip + 1}–${skip + count}` : "No results on this page";
+  $(`#${name}-range`).textContent = items.length
+    ? `Showing ${start + 1}–${start + items.length} of ${total}`
+    : "No results on this page";
   pager.querySelector('[data-dir="-1"]').disabled = !hasPrev;
   pager.querySelector('[data-dir="1"]').disabled = !hasNext;
 }
@@ -139,13 +146,12 @@ function taskTable(tasks, withActions) {
     let actions = "";
     if (withActions) {
       const statusControl = can.updateStatus(task)
-        ? `<select class="select status-select" data-id="${task.id}" data-current="${task.status}"
-             aria-label="Change status" ${task.status === "COMPLETED" ? 'disabled title="Completed tasks are locked"' : ""}>
-             ${Object.entries(STATUS_LABELS).map(([value, label]) =>
-               `<option value="${value}" ${value === task.status ? "selected" : ""}>${label}</option>`).join("")}
+        ? `<select class="select status-select" data-id="${task.id}" data-current="${task.status}" aria-label="Change status">
+             ${[task.status, ...TRANSITIONS[task.status]].map((value) =>
+               `<option value="${value}" ${value === task.status ? "selected" : ""}>${STATUS_LABELS[value]}</option>`).join("")}
            </select>`
         : "";
-      const assignBtn = can.assignTask()
+      const assignBtn = can.assignTask(task)
         ? `<button class="icon-btn" type="button" data-action="assign" data-id="${task.id}" title="Assign"><i data-lucide="user-plus"></i></button>`
         : "";
       const deleteBtn = can.deleteTask()
@@ -158,7 +164,7 @@ function taskTable(tasks, withActions) {
       <td><div class="task-title">${escapeHtml(task.title)}</div></td>
       <td class="col-desc"><div class="task-desc" title="${escapeHtml(task.description)}">${task.description ? escapeHtml(task.description) : '<span class="faint">—</span>'}</div></td>
       <td>${statusBadge(task.status)}</td>
-      <td>${assigneeCell(task.assigned_to_id)}</td>
+      <td>${assigneeCell(task.assigned_to)}</td>
       <td>${dueCell(task)}</td>
       ${actions}
     </tr>`;
@@ -175,17 +181,6 @@ function taskTable(tasks, withActions) {
 
 // --- Dashboard -----------------------------------------------------------------
 
-// The list endpoint caps limit at 100, so page through to count everything.
-async function fetchAllTasks() {
-  const all = [];
-  for (let skip = 0; skip < 1000; skip += 100) {
-    const batch = await Api.listTasks({ limit: 100, skip });
-    all.push(...batch);
-    if (batch.length < 100) break;
-  }
-  return all;
-}
-
 async function loadDashboard() {
   const scope = {
     ADMIN: "All tasks in the workspace.",
@@ -199,15 +194,18 @@ async function loadDashboard() {
   recent.innerHTML = loadingState(5, 5);
 
   try {
-    const tasks = await fetchAllTasks();
-    const count = (status) => tasks.filter((t) => t.status === status).length;
-    $("#stat-total").textContent = tasks.length;
-    $("#stat-pending").textContent = count("PENDING");
-    $("#stat-progress").textContent = count("IN_PROGRESS");
-    $("#stat-completed").textContent = count("COMPLETED");
+    // Each list response carries a total, so counting needs no full fetch.
+    // The API returns tasks newest first.
+    const total = (status) => Api.listTasks({ status, size: 1 }).then((p) => p.total);
+    const [latestPage, pending, progress, completed] = await Promise.all([
+      Api.listTasks({ size: 5 }), total("PENDING"), total("IN_PROGRESS"), total("COMPLETED"),
+    ]);
+    $("#stat-total").textContent = latestPage.total;
+    $("#stat-pending").textContent = pending;
+    $("#stat-progress").textContent = progress;
+    $("#stat-completed").textContent = completed;
 
-    // Tasks have no created_at, so the highest IDs are the most recent.
-    const latest = [...tasks].sort((a, b) => b.id - a.id).slice(0, 5);
+    const latest = latestPage.items;
     recent.innerHTML = latest.length
       ? taskTable(latest, false)
       : emptyState("inbox", "No tasks yet",
@@ -223,23 +221,24 @@ async function loadDashboard() {
 
 async function loadTasks() {
   const container = $("#tasks-table");
-  const { skip, search, status } = state.tasks;
+  const { page, status } = state.tasks;
   container.innerHTML = loadingState(6);
   $("#tasks-pager").hidden = true;
 
   try {
-    const items = await Api.listTasks({ limit: PAGE_SIZE, skip, search, status });
+    const result = await Api.listTasks({ page, size: PAGE_SIZE, status });
+    const items = result.items;
     state.tasks.items = items;
 
     if (items.length) {
       container.innerHTML = taskTable(items, true);
-    } else if (search || status) {
-      container.innerHTML = emptyState("search-x", "No matching tasks", "Try a different search term or status.");
+    } else if (status) {
+      container.innerHTML = emptyState("search-x", "No matching tasks", "Try a different status.");
     } else {
       container.innerHTML = emptyState("inbox", "No tasks yet",
         can.createTask() ? "Click “New task” to create one." : "You don't have any tasks assigned to you yet.");
     }
-    setPager("tasks", skip, items.length);
+    setPager("tasks", result);
   } catch (err) {
     container.innerHTML = errorState(err.message);
   }
@@ -263,14 +262,14 @@ async function changeStatus(select) {
 
 // --- Users page (admin) ----------------------------------------------------------
 
-// Admins get a user directory so tasks can show emails and the assign
-// dialogs can offer a dropdown.
+// Admins and managers get a user directory so tasks can show emails and the
+// assign dialogs can offer a dropdown.
 async function loadUserDirectory() {
   try {
-    for (let skip = 0; skip < 1000; skip += 100) {
-      const batch = await Api.listUsers({ limit: 100, skip });
-      batch.forEach((u) => state.users.set(u.id, u));
-      if (batch.length < 100) break;
+    for (let page = 1; page <= 10; page += 1) {
+      const result = await Api.listUsers({ page, size: 100 });
+      result.items.forEach((u) => state.users.set(u.id, u));
+      if (page >= result.pages) break;
     }
   } catch {
     // Not fatal: tasks fall back to showing "User #id".
@@ -279,27 +278,26 @@ async function loadUserDirectory() {
 
 async function loadUsers() {
   const container = $("#users-table");
-  const { skip, search } = state.usersList;
+  const { page } = state.usersList;
   container.innerHTML = loadingState(3);
   $("#users-pager").hidden = true;
 
   try {
-    const users = await Api.listUsers({ limit: PAGE_SIZE, skip, search });
+    const result = await Api.listUsers({ page, size: PAGE_SIZE });
+    const users = result.items;
     if (!users.length) {
-      container.innerHTML = search
-        ? emptyState("search-x", "No matching users", "No user email contains that text.")
-        : emptyState("users", "No users yet", "Users appear here once they sign up.");
+      container.innerHTML = emptyState("users", "No users yet", "Users appear here once they sign up.");
     } else {
       container.innerHTML = `<table class="table">
         <thead><tr><th>User</th><th>ID</th><th>Role</th></tr></thead>
         <tbody>${users.map((u) => `<tr>
           <td><span class="person">${avatar(u.email)}${escapeHtml(u.email)}${u.id === state.user.id ? ' <span class="faint">(you)</span>' : ""}</span></td>
           <td class="muted">#${u.id}</td>
-          <td>${roleBadge(ROLE_NAMES[u.role_id] || `ROLE ${u.role_id}`)}</td>
+          <td>${roleBadge(u.role)}</td>
         </tr>`).join("")}</tbody>
       </table>`;
     }
-    setPager("users", skip, users.length);
+    setPager("users", result);
   } catch (err) {
     container.innerHTML = errorState(err.message);
   }
@@ -309,7 +307,7 @@ async function loadUsers() {
 // --- Roles page (admin) ----------------------------------------------------------
 
 const ROLE_INFO = {
-  ADMIN: { icon: "crown", text: "Full access to every task, plus user and role administration." },
+  ADMIN: { icon: "crown", text: "Full access to every task, including deleting tasks." },
   MANAGER: { icon: "briefcase", text: "Creates and assigns tasks, and manages the ones they own or are assigned." },
   USER: { icon: "user", text: "Sees and updates the status of tasks assigned to them." },
 };
@@ -318,11 +316,10 @@ const ROLE_INFO = {
 const PERMISSIONS = [
   ["View tasks", ["All", "Created or assigned", "Assigned only"]],
   ["Create tasks", [true, true, false]],
-  ["Assign tasks", [true, true, false]],
+  ["Assign tasks", ["All", "Created or assigned", false]],
   ["Update task status", ["All", "Created or assigned", "Assigned only"]],
   ["Delete tasks", [true, false, false]],
-  ["View users", [true, false, false]],
-  ["View roles", [true, false, false]],
+  ["View users", [true, true, false]],
 ];
 
 function permissionCell(value) {
@@ -331,44 +328,38 @@ function permissionCell(value) {
   return `<i data-lucide="check" class="yes"></i><span class="scope">${value}</span>`;
 }
 
-async function loadRoles() {
+function loadRoles() {
   const list = $("#roles-list");
-  list.innerHTML = `<div class="card">${loadingState(3, 3)}</div>`;
 
   $("#permissions-matrix").innerHTML = PERMISSIONS.map(([action, values]) =>
     `<tr><td>${action}</td>${values.map((v) => `<td>${permissionCell(v)}</td>`).join("")}</tr>`
   ).join("");
 
-  try {
-    const roles = await Api.listRoles();
-    const members = (roleId) => [...state.users.values()].filter((u) => u.role_id === roleId).length;
-    list.innerHTML = `<div class="role-grid">${roles.map((role) => {
-      const info = ROLE_INFO[role.name] || { icon: "shield", text: "" };
-      const n = members(role.id);
-      return `<div class="card role-card">
-        <div class="role-card-head">
-          <span class="stat-icon"><i data-lucide="${info.icon}"></i></span>
-          ${roleBadge(role.name)}
-        </div>
-        <h3>${role.name.charAt(0) + role.name.slice(1).toLowerCase()}</h3>
-        <p>${info.text}</p>
-        <p class="faint" style="margin-top:12px">${n} ${n === 1 ? "member" : "members"} · ID ${role.id}</p>
-      </div>`;
-    }).join("")}</div>`;
-  } catch (err) {
-    list.innerHTML = `<div class="card" style="margin-bottom:24px">${errorState(err.message)}</div>`;
-  }
+  // Roles are fixed (seeded by a migration), so they are described statically.
+  const members = (role) => [...state.users.values()].filter((u) => u.role === role).length;
+  list.innerHTML = `<div class="role-grid">${Object.entries(ROLE_INFO).map(([role, info]) => {
+    const n = members(role);
+    return `<div class="card role-card">
+      <div class="role-card-head">
+        <span class="stat-icon"><i data-lucide="${info.icon}"></i></span>
+        ${roleBadge(role)}
+      </div>
+      <h3>${role.charAt(0) + role.slice(1).toLowerCase()}</h3>
+      <p>${info.text}</p>
+      <p class="faint" style="margin-top:12px">${n} ${n === 1 ? "member" : "members"}</p>
+    </div>`;
+  }).join("")}</div>`;
   refreshIcons();
 }
 
 // --- Dialogs -------------------------------------------------------------------
 
-// Admins pick from the user directory; managers can't list users, so they enter an ID.
+// Pick from the user directory; fall back to an ID field if it couldn't load.
 function assigneeField(container, { required, selectedId }) {
   const optional = required ? "" : ' <span class="faint">(optional)</span>';
-  if (can.viewAdmin() && state.users.size) {
+  if (state.users.size) {
     const options = [...state.users.values()].map((u) =>
-      `<option value="${u.id}" ${u.id === selectedId ? "selected" : ""}>${escapeHtml(u.email)} · ${ROLE_NAMES[u.role_id] || ""}</option>`
+      `<option value="${u.id}" ${u.id === selectedId ? "selected" : ""}>${escapeHtml(u.email)} · ${u.role}</option>`
     ).join("");
     container.innerHTML = `<label for="${container.closest("dialog").id}-assignee">Assignee${optional}</label>
       <select class="select" id="${container.closest("dialog").id}-assignee" name="assignee" ${required ? "required" : ""}>
@@ -378,7 +369,7 @@ function assigneeField(container, { required, selectedId }) {
     container.innerHTML = `<label for="${container.closest("dialog").id}-assignee">Assignee user ID${optional}</label>
       <input class="input" id="${container.closest("dialog").id}-assignee" name="assignee" type="number" min="1"
         placeholder="e.g. 3" value="${selectedId ?? ""}" ${required ? "required" : ""}>
-      <span class="hint">Only admins can browse users, so enter the user's ID.</span>`;
+      <span class="hint">The user list couldn't be loaded, so enter the user's ID.</span>`;
   }
 }
 
@@ -393,9 +384,9 @@ function openCreateDialog() {
   const dialog = $("#create-dialog");
   const form = $("#create-form");
   form.reset();
-  // datetime-local wants local time without seconds or zone
-  const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
-  form.due.min = now.toISOString().slice(0, 16);
+  // The API rejects due dates in the past; <input type=date> wants YYYY-MM-DD.
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  form.due.min = today.toISOString().slice(0, 10);
   assigneeField($(".assignee-field", form), { required: false });
   openDialog(dialog);
   form.elements.title.focus();
@@ -404,7 +395,7 @@ function openCreateDialog() {
 function openAssignDialog(task) {
   state.activeTask = task;
   $("#assign-task-name").innerHTML = `Choose who should work on <strong>${escapeHtml(task.title)}</strong>.`;
-  assigneeField($("#assign-form .assignee-field"), { required: true, selectedId: task.assigned_to_id });
+  assigneeField($("#assign-form .assignee-field"), { required: true, selectedId: task.assigned_to });
   openDialog($("#assign-dialog"));
 }
 
@@ -500,28 +491,18 @@ function bindEvents() {
   });
 
   // Filters
-  $("#task-search").addEventListener("input", debounce((event) => {
-    state.tasks.search = event.target.value.trim();
-    state.tasks.skip = 0;
-    loadTasks();
-  }));
   $("#task-status-filter").addEventListener("change", (event) => {
     state.tasks.status = event.target.value;
-    state.tasks.skip = 0;
+    state.tasks.page = 1;
     loadTasks();
   });
-  $("#user-search").addEventListener("input", debounce((event) => {
-    state.usersList.search = event.target.value.trim();
-    state.usersList.skip = 0;
-    loadUsers();
-  }));
 
   // Pagination
   document.querySelectorAll("[data-pager]").forEach((button) => {
     button.addEventListener("click", () => {
       const name = button.dataset.pager;
       const target = name === "tasks" ? state.tasks : state.usersList;
-      target.skip = Math.max(0, target.skip + Number(button.dataset.dir) * PAGE_SIZE);
+      target.page = Math.max(1, target.page + Number(button.dataset.dir));
       name === "tasks" ? loadTasks() : loadUsers();
     });
   });
@@ -544,8 +525,8 @@ function bindEvents() {
 
     const task = { title };
     if (form.description.value.trim()) task.description = form.description.value.trim();
-    if (form.due.value) task.due_date = new Date(form.due.value).toISOString();
-    if (form.assignee.value) task.assigned_to_id = Number(form.assignee.value);
+    if (form.due.value) task.due_date = form.due.value;
+    if (form.assignee.value) task.assigned_to = Number(form.assignee.value);
 
     submitDialog(form, "Creating…", async () => {
       await Api.createTask(task);
@@ -584,12 +565,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!requireSession()) return;
 
   state.user = getSession().user;
-  state.role = ROLE_NAMES[state.user.role_id] || "USER";
+  state.role = state.user.role;
 
   renderSidebar();
   bindEvents();
   refreshIcons();
 
-  if (can.viewAdmin()) await loadUserDirectory();
+  if (can.listUsers()) await loadUserDirectory();
   route();
 });

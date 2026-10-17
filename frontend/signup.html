@@ -19,7 +19,7 @@
 
       <div class="auth-pitch">
         <h2>Every role sees exactly what it should.</h2>
-        <p>Pick a role to explore how permissions change what you can do.</p>
+        <p>New accounts start as users. An admin can then assign you tasks.</p>
         <ul class="feature-list">
           <li><span class="feature-icon"><i data-lucide="crown"></i></span>Admins manage everything, including users</li>
           <li><span class="feature-icon"><i data-lucide="briefcase"></i></span>Managers create and assign tasks</li>
@@ -27,7 +27,7 @@
         </ul>
       </div>
 
-      <small>FastAPI · PostgreSQL · Redis · Celery</small>
+      <small>FastAPI · PostgreSQL · async SQLAlchemy</small>
     </aside>
 
     <main class="auth-main">
@@ -49,15 +49,6 @@
           <div class="field">
             <label for="confirm">Confirm password</label>
             <input class="input" id="confirm" name="confirm" type="password" autocomplete="new-password" placeholder="••••••••" required>
-          </div>
-          <div class="field">
-            <label for="role">Role</label>
-            <select class="select" id="role" name="role">
-              <option value="3">User</option>
-              <option value="2">Manager</option>
-              <option value="1">Admin</option>
-            </select>
-            <span class="hint">The API lets you choose a role at sign-up, which is handy for demos.</span>
           </div>
           <button class="btn btn-primary btn-block" type="submit">Create account</button>
         </form>
