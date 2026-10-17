@@ -10,6 +10,9 @@ from pydantic import BaseModel, ValidationError
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 
+# bcrypt only uses the first 72 bytes, and bcrypt>=5 raises on longer input.
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
 _password_hash = PasswordHash((BcryptHasher(),))
 
 # Verified against when a login email is unknown, so the response time doesn't
@@ -31,8 +34,9 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed_password: str | None) -> bool:
     """Check a password. Pass `None` for an unknown user to keep timing constant."""
-    if hashed_password is None:
-        _password_hash.verify(password, _DUMMY_HASH)
+    if hashed_password is None or len(password.encode()) > BCRYPT_MAX_PASSWORD_BYTES:
+        # Still do the bcrypt work, so a fast failure doesn't leak anything.
+        _password_hash.verify("timing-attack-mitigation", _DUMMY_HASH)
         return False
     return _password_hash.verify(password, hashed_password)
 

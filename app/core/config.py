@@ -1,10 +1,11 @@
 """Application settings, loaded from environment variables (and `.env` locally)."""
 
+import json
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -21,19 +22,20 @@ class Settings(BaseSettings):
 
     # Database. A plain `postgresql://` URL is accepted and upgraded to asyncpg.
     database_url: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:15432/task_db"
+        default="postgresql+asyncpg://task_user:task_password@localhost:15432/task_db"
     )
     db_echo: bool = False
     db_pool_size: int = Field(default=5, ge=1)
     db_max_overflow: int = Field(default=10, ge=0)
 
-    # JWT
-    secret_key: str = Field(min_length=16)
+    # JWT. PyJWT warns about HS256 keys shorter than 32 bytes.
+    secret_key: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=60, ge=1)
 
-    # Comma-separated list in the environment, e.g. "http://localhost:18080"
-    cors_origins: list[str] = Field(default_factory=list)
+    # Comma-separated list in the environment, e.g. "http://localhost:18080".
+    # NoDecode stops pydantic-settings from requiring JSON for this field.
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     @field_validator("database_url")
     @classmethod
@@ -46,9 +48,11 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
-        if isinstance(value, str) and not value.startswith("["):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+        if not isinstance(value, str):
+            return value
+        if value.lstrip().startswith("["):
+            return json.loads(value)
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
 @lru_cache
