@@ -1,28 +1,25 @@
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from app.models import RoleName, User
-from fastapi import HTTPException, status
+"""User lookups shared by authentication, task assignment and the users list."""
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import User
 
 
-class UserService:
-    @staticmethod
-    def view_all_users(
-        db: Session,
-        current_user: User,
-        limit: int,
-        skip: int,
-        search: Optional[str] = None,
-    ) -> List[User]:
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    return await db.get(User, user_id)
 
-        if current_user.role.name != RoleName.ADMIN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied. Only Administrators can view user information.",
-            )
 
-        query = db.query(User)
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email.lower()))
+    return result.scalar_one_or_none()
 
-        if search:
-            query = query.filter(User.email.ilike(f"%{search}%"))
 
-        return query.order_by(User.id).offset(skip).limit(limit).all()
+async def list_users(
+    db: AsyncSession, *, page: int, size: int
+) -> tuple[list[User], int]:
+    total = await db.scalar(select(func.count()).select_from(User)) or 0
+    result = await db.execute(
+        select(User).order_by(User.id).offset((page - 1) * size).limit(size)
+    )
+    return list(result.scalars().all()), total

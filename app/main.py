@@ -1,34 +1,59 @@
-from fastapi import FastAPI
-from app.api.auth import router as auth_router
-from app.api.task import router as task_router
-from app.api.role import router as role_router
-from app.api.user import router as user_router
-from app.core import swagger
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from app.core.redis import init_redis, close_redis
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.router import api_router
+from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
+from app.db.session import engine
+from app.schemas.common import ErrorResponse
+
+DESCRIPTION = """
+Task management API with role-based access control (ADMIN, MANAGER, USER).
+
+**Authenticating in Swagger:** register via `POST /auth/register`, then click
+**Authorize** and enter your email as the *username* along with your password.
+"""
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_redis()
-    print("Redis connection pool ready.")
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
-    await close_redis()
-    print("Redis connection pool closed safely.")
+    await engine.dispose()
 
 
-app = FastAPI(
-    title=swagger.TITLE,
-    version=swagger.VERSION,
-    description=swagger.DESCRIPTION,
-    openapi_tags=swagger.TAGS_METADATA,
-    lifespan=lifespan,
-    docs_url=None,
-)
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title=settings.project_name,
+        version=settings.api_version,
+        description=DESCRIPTION,
+        lifespan=lifespan,
+        responses={
+            401: {"model": ErrorResponse, "description": "Missing or invalid token"},
+            422: {"model": ErrorResponse, "description": "Validation error"},
+        },
+        swagger_ui_parameters={"persistAuthorization": True},
+    )
 
-app.include_router(auth_router)
-app.include_router(task_router)
-app.include_router(role_router)
-app.include_router(user_router)
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
-swagger.configure_swagger(app)
+    register_exception_handlers(app)
+    app.include_router(api_router)
+
+    @app.get("/health", tags=["Health"], summary="Liveness probe")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return app
+
+
+app = create_app()

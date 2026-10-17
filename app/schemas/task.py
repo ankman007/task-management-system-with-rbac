@@ -1,62 +1,43 @@
-from datetime import datetime, timezone
-from typing import Optional
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from app.models.task import TaskStatus
+from datetime import date, datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.models.enums import TaskStatus
+from app.schemas.common import RequestSchema
 
 
-class TaskBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-    due_date: Optional[datetime] = None
-
-    @field_validator("due_date")
-    @classmethod
-    def ensure_due_date_is_future(cls, value: Optional[datetime]) -> Optional[datetime]:
-        if value is None:
-            return value
-        now = datetime.now(timezone.utc)
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        if value < now:
-            raise ValueError("The task due date cannot be set in the past.")
-
-        return value
-
-
-class TaskCreate(TaskBase):
-    assigned_to_id: Optional[int] = Field(default=None, gt=0)
-
-
-class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[TaskStatus] = None
-    due_date: Optional[datetime] = None
-    assigned_to_id: Optional[int] = Field(default=None, gt=0)
+class TaskCreate(RequestSchema):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    due_date: date | None = None
+    assigned_to: int | None = Field(default=None, gt=0)
 
     @field_validator("due_date")
     @classmethod
-    def ensure_update_date_is_future(
-        cls, value: Optional[datetime]
-    ) -> Optional[datetime]:
-        if value is None:
-            return value
-        now = datetime.now(timezone.utc)
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        if value < now:
-            raise ValueError("The task due date cannot be set in the past.")
+    def _not_in_past(cls, value: date | None) -> date | None:
+        if value is not None and value < date.today():
+            raise ValueError("Due date cannot be in the past")
         return value
 
 
-class TaskResponse(TaskBase):
-    id: int
+class TaskAssign(RequestSchema):
+    # Required but nullable: an explicit `null` unassigns the task.
+    assigned_to: int | None = Field(gt=0)
+
+
+class TaskStatusUpdate(RequestSchema):
     status: TaskStatus
-    created_by_id: int
-    assigned_to_id: Optional[int]
 
+
+class TaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-
-class TaskAssignRequest(BaseModel):
-    assign_to_id: int = Field(..., gt=0)
+    id: int
+    title: str
+    description: str | None
+    status: TaskStatus
+    due_date: date | None
+    assigned_to: int | None
+    created_by: int
+    created_at: datetime
+    updated_at: datetime

@@ -1,21 +1,24 @@
-from sqlalchemy import Column, Integer, Enum
-from sqlalchemy.orm import relationship
-from app.db.base_class import Base
-import enum
+from typing import TYPE_CHECKING
 
+from sqlalchemy import Enum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-class RoleName(str, enum.Enum):
-    ADMIN = "ADMIN"
-    MANAGER = "MANAGER"
-    USER = "USER"
+from app.db.base import Base
+from app.models.enums import RoleName
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class Role(Base):
     __tablename__ = "roles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(
-        Enum(RoleName), default=RoleName.USER, unique=True, nullable=False, index=True
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[RoleName] = mapped_column(
+        Enum(RoleName, name="role_name"), unique=True
     )
 
-    users = relationship("User", back_populates="role")
+    users: Mapped[list["User"]] = relationship(back_populates="role", lazy="raise")
+
+    def __repr__(self) -> str:
+        return f"<Role {self.name}>"

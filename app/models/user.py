@@ -1,23 +1,32 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy.orm import relationship
-from app.db.base_class import Base
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.role import Role
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String, nullable=False)
-    role_id = Column(
-        Integer, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Stored lower-cased (normalised by the schema), so a plain unique index
+    # enforces case-insensitive uniqueness.
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("roles.id", ondelete="RESTRICT"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
-    role = relationship("Role", back_populates="users")
+    # Every authenticated request needs the role, so load it eagerly.
+    role: Mapped["Role"] = relationship(back_populates="users", lazy="joined")
 
-    created_tasks = relationship(
-        "Task", foreign_keys="Task.created_by_id", back_populates="creator"
-    )
-    assigned_tasks = relationship(
-        "Task", foreign_keys="Task.assigned_to_id", back_populates="assignee"
-    )
+    def __repr__(self) -> str:
+        return f"<User {self.id} {self.email}>"
