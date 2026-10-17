@@ -31,7 +31,6 @@ def create_app() -> FastAPI:
         description=DESCRIPTION,
         lifespan=lifespan,
         responses={
-            401: {"model": ErrorResponse, "description": "Missing or invalid token"},
             422: {"model": ErrorResponse, "description": "Validation error"},
         },
         swagger_ui_parameters={"persistAuthorization": True},

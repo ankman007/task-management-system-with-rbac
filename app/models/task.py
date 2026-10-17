@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,7 +17,12 @@ class Task(Base):
         # Visibility queries filter by owner/assignee and sort by recency.
         Index("ix_tasks_assigned_to_created_at", "assigned_to", "created_at"),
         Index("ix_tasks_created_by_created_at", "created_by", "created_at"),
+        # ADMINs list every task, newest first.
+        Index("ix_tasks_created_at_id", "created_at", "id"),
     )
+    # Fetch server-generated values (created_at, updated_at) with RETURNING on
+    # INSERT/UPDATE, so no extra refresh is needed in async code.
+    __mapper_args__: ClassVar[dict[str, Any]] = {"eager_defaults": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))

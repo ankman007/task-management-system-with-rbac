@@ -41,3 +41,9 @@ class ErrorResponse(BaseModel):
     """Shape of every error response; used to document errors in OpenAPI."""
 
     error: ErrorBody
+
+
+# For routers whose every endpoint needs a bearer token.
+UNAUTHORIZED_RESPONSE: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorResponse, "description": "Missing or invalid token"},
+}

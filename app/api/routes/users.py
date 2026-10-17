@@ -4,11 +4,16 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentUser, DbSession, require_roles
 from app.models import RoleName
-from app.schemas.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Page
+from app.schemas.common import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    UNAUTHORIZED_RESPONSE,
+    Page,
+)
 from app.schemas.user import UserRead
 from app.services import user_service
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["Users"], responses=UNAUTHORIZED_RESPONSE)
 
 
 @router.get("/me", response_model=UserRead, summary="Get the current user")
