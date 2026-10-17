@@ -1,195 +1,128 @@
+"""GET /users/me and GET /users."""
+
 import pytest
-from fastapi import status
-from app.models import User, Role, RoleName
+from httpx import AsyncClient
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import create_access_token
+from app.models import RoleName, User
+from tests.helpers import AuthUser, assert_error, auth_headers
 
 
-class TestGetAllUsers:
-    """Comprehensive tests for GET /users/ endpoint."""
+@pytest.mark.parametrize("actor", ["admin", "manager", "user"])
+async def test_me_returns_the_authenticated_user_for_every_role(
+    client: AsyncClient, people: dict[str, AuthUser], actor: str
+):
+    current = people[actor]
 
-    def test_get_all_users_as_admin(self, client, auth_headers_admin):
-        """Test admin can retrieve all users."""
-        response = client.get("/users/", headers=auth_headers_admin)
+    response = await client.get("/users/me", headers=current.headers)
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) >= 1
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == current.id
+    assert body["email"] == current.email
+    assert body["role"] == current.role.value
+    assert set(body) == {"id", "email", "role", "created_at"}
 
-    def test_get_all_users_response_structure(self, client, auth_headers_admin):
-        """Test users response has expected structure."""
-        response = client.get("/users/", headers=auth_headers_admin)
 
-        assert response.status_code == status.HTTP_200_OK
-        users = response.json()
+async def test_me_never_exposes_the_password_hash(client: AsyncClient, user: AuthUser):
+    response = await client.get("/users/me", headers=user.headers)
 
-        if len(users) > 0:
-            user = users[0]
-            assert "id" in user
-            assert "email" in user
-            assert "role" in user or "role_id" in user
+    assert "password" not in response.text
+    assert "hashed" not in response.text
 
-    def test_get_all_users_with_pagination(
-        self, client, auth_headers_admin, db_session
-    ):
-        """Test pagination parameters work."""
-        # Add multiple users
-        user_role = db_session.query(Role).filter(Role.name == RoleName.USER).first()
-        for i in range(3):
-            user = User(
-                email=f"user{i}@example.com",
-                hashed_password="fake",
-                role_id=user_role.id,
-            )
-            db_session.add(user)
-        db_session.commit()
 
-        response = client.get("/users/?limit=2&skip=0", headers=auth_headers_admin)
+@pytest.mark.parametrize(
+    ("actor", "expected_status"),
+    [("admin", 200), ("manager", 200), ("user", 403)],
+)
+async def test_list_users_is_restricted_to_admins_and_managers(
+    client: AsyncClient, people: dict[str, AuthUser], actor: str, expected_status: int
+):
+    response = await client.get("/users", headers=people[actor].headers)
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert len(data) <= 2
+    if expected_status == 403:
+        assert_error(response, 403, "FORBIDDEN")
+    else:
+        assert response.status_code == 200
 
-    def test_get_all_users_with_skip(self, client, auth_headers_admin, db_session):
-        """Test skip parameter works."""
-        response = client.get("/users/?skip=0&limit=100", headers=auth_headers_admin)
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert isinstance(data, list)
+async def test_list_users_returns_every_user_in_a_pagination_envelope(
+    client: AsyncClient, people: dict[str, AuthUser]
+):
+    response = await client.get("/users", headers=people["manager"].headers)
 
-    def test_get_all_users_with_search_by_email(
-        self, client, auth_headers_admin, db_session
-    ):
-        """Test search parameter filters users by email."""
-        user_role = db_session.query(Role).filter(Role.name == RoleName.USER).first()
-        user = User(
-            email="searchable@example.com",
-            hashed_password="fake",
-            role_id=user_role.id,
-        )
-        db_session.add(user)
-        db_session.commit()
+    body = response.json()
+    assert set(body) == {"items", "total", "page", "size", "pages"}
+    assert body["total"] == len(people)
+    assert body["page"] == 1
+    assert body["size"] == 20
+    assert body["pages"] == 1
+    assert {item["email"] for item in body["items"]} == {
+        p.email for p in people.values()
+    }
 
-        response = client.get("/users/?search=searchable", headers=auth_headers_admin)
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert all("searchable" in user["email"] for user in data)
+async def test_list_users_is_ordered_by_id_and_paginates(
+    client: AsyncClient, people: dict[str, AuthUser]
+):
+    expected_ids = sorted(p.id for p in people.values())
+    headers = people["admin"].headers
 
-    def test_get_all_users_search_no_results(self, client, auth_headers_admin):
-        """Test search with no matches returns empty list."""
-        response = client.get(
-            "/users/?search=nonexistentuser", headers=auth_headers_admin
-        )
+    first = (await client.get("/users?page=1&size=2", headers=headers)).json()
+    last = (await client.get("/users?page=3&size=2", headers=headers)).json()
+    beyond = (await client.get("/users?page=4&size=2", headers=headers)).json()
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert len(data) == 0
+    assert [u["id"] for u in first["items"]] == expected_ids[:2]
+    assert [u["id"] for u in last["items"]] == expected_ids[4:]
+    assert first["total"] == last["total"] == 5
+    assert first["pages"] == 3
+    assert beyond["items"] == []
+    assert beyond["total"] == 5
 
-    def test_get_all_users_limit_boundary(self, client, auth_headers_admin):
-        """Test limit parameter respects maximum."""
-        response = client.get("/users/?limit=100", headers=auth_headers_admin)
-        assert response.status_code == status.HTTP_200_OK
 
-        response = client.get("/users/?limit=101", headers=auth_headers_admin)
-        # Should fail or clamp to 100
-        assert response.status_code in [
-            status.HTTP_200_OK,
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-        ]
+@pytest.mark.parametrize(
+    "query", ["page=0", "page=-1", "size=0", "size=101", "page=abc", "size=1.5"]
+)
+async def test_list_users_rejects_out_of_range_pagination(
+    client: AsyncClient, admin: AuthUser, query: str
+):
+    response = await client.get(f"/users?{query}", headers=admin.headers)
 
-    def test_get_all_users_contains_admin(self, client, auth_headers_admin, admin_user):
-        """Test admin user is in the users list."""
-        response = client.get("/users/", headers=auth_headers_admin)
+    error = assert_error(response, 422, "VALIDATION_ERROR")
+    assert isinstance(error["details"], list)
+    assert error["details"]
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert any(user["email"] == admin_user.email for user in data)
 
-    def test_get_all_users_contains_normal_user(
-        self, client, auth_headers_admin, normal_user
-    ):
-        """Test normal user is in the users list."""
-        response = client.get("/users/", headers=auth_headers_admin)
+async def test_list_users_accepts_the_maximum_page_size(
+    client: AsyncClient, admin: AuthUser
+):
+    response = await client.get("/users?size=100", headers=admin.headers)
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert any(user["email"] == normal_user.email for user in data)
+    assert response.status_code == 200
+    assert response.json()["size"] == 100
 
-    def test_get_all_users_each_has_email(self, client, auth_headers_admin):
-        """Test all returned users have email field."""
-        response = client.get("/users/", headers=auth_headers_admin)
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert all("email" in user for user in data)
+async def test_role_is_read_from_the_database_not_from_the_token(
+    client: AsyncClient, user: AuthUser
+):
+    # A USER holding a (validly signed) token that claims ADMIN gains nothing.
+    forged = create_access_token(user.id, RoleName.ADMIN.value)
 
-    def test_get_all_users_each_has_id(self, client, auth_headers_admin):
-        """Test all returned users have id field."""
-        response = client.get("/users/", headers=auth_headers_admin)
+    me = await client.get("/users/me", headers=auth_headers(forged))
+    listing = await client.get("/users", headers=auth_headers(forged))
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert all("id" in user for user in data)
+    assert me.json()["role"] == "USER"
+    assert_error(listing, 403, "FORBIDDEN")
 
-    def test_get_all_users_pagination_skip_and_limit(
-        self, client, auth_headers_admin, db_session
-    ):
-        """Test skip and limit work together."""
-        user_role = db_session.query(Role).filter(Role.name == RoleName.USER).first()
-        for i in range(5):
-            user = User(
-                email=f"paginationtest{i}@example.com",
-                hashed_password="fake",
-                role_id=user_role.id,
-            )
-            db_session.add(user)
-        db_session.commit()
 
-        response = client.get("/users/?skip=2&limit=2", headers=auth_headers_admin)
+async def test_token_of_a_deleted_user_is_rejected(
+    client: AsyncClient, db_session: AsyncSession, user: AuthUser
+):
+    await db_session.execute(delete(User).where(User.id == user.id))
+    await db_session.commit()
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert len(data) <= 2
+    response = await client.get("/users/me", headers=user.headers)
 
-    def test_get_all_users_case_insensitive_search(
-        self, client, auth_headers_admin, db_session
-    ):
-        """Test search is case insensitive."""
-        user_role = db_session.query(Role).filter(Role.name == RoleName.USER).first()
-        user = User(
-            email="CaseSensitive@example.com",
-            hashed_password="fake",
-            role_id=user_role.id,
-        )
-        db_session.add(user)
-        db_session.commit()
-
-        response = client.get(
-            "/users/?search=casesensitive", headers=auth_headers_admin
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        # Should find the user regardless of case if search is case-insensitive
-        # (depending on implementation)
-        data = response.json()
-        assert isinstance(data, list)
-
-    def test_get_all_users_default_limit(self, client, auth_headers_admin, db_session):
-        """Test default limit is applied when not specified."""
-        user_role = db_session.query(Role).filter(Role.name == RoleName.USER).first()
-        for i in range(15):
-            user = User(
-                email=f"defaultlimit{i}@example.com",
-                hashed_password="fake",
-                role_id=user_role.id,
-            )
-            db_session.add(user)
-        db_session.commit()
-
-        response = client.get("/users/", headers=auth_headers_admin)
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        # Default limit is 10
-        assert len(data) <= 10
+    assert_error(response, 401, "UNAUTHORIZED")
