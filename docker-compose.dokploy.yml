@@ -74,9 +74,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the Environment tab}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in the Environment tab}
     volumes:
-      # PostgreSQL creates its user from POSTGRES_PASSWORD only when this
-      # volume is first initialised; changing the variable later does NOT
-      # change the database password (see docs/DEPLOYMENT.md, troubleshooting).
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
@@ -93,3 +90,11 @@ networks:
 
 volumes:
   postgres_data:
+    # PostgreSQL creates its user from POSTGRES_PASSWORD only when this volume
+    # is first initialised; changing the variable later does NOT change the
+    # database password ("password authentication failed").
+    # Raising DB_VOLUME_VERSION in the Environment tab starts on a NEW, EMPTY
+    # database created with the current password. The old volume is kept, not
+    # deleted, but the app stops using its data, so never raise it on a
+    # database with real data: change the password inside PostgreSQL instead.
+    name: ${COMPOSE_PROJECT_NAME}_postgres_${DB_VOLUME_VERSION:-1}
