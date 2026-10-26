@@ -27,7 +27,7 @@ Browser ──HTTPS──> Cloudflare ──HTTPS──> Traefik on 103.181.227.
         ──HTTP──> nginx:80 ──┬── /                      dashboard (static files in the image)
                              ├── /api/...               api:8000  (FastAPI, ROOT_PATH=/api)
                              └── /docs, /openapi.json   api:8000  (Swagger UI)
-                                         api ──> db:5432 (PostgreSQL, volume <project>_postgres_1)
+                                         api ──> db:5432 (PostgreSQL, volume <project>_postgres_2)
 ```
 
 - Only `nginx` joins the external `dokploy-network`, which is how Traefik reaches it. `api` and `db` stay on the project's own network and publish no ports.
@@ -133,13 +133,13 @@ Then:
 ## 7. Updating the application
 
 - **Push to `main`.** With Autodeploy on, Dokploy redeploys automatically; otherwise click **Deploy**. Every start applies any new migrations before serving.
-- **Data is kept.** It lives in the named volume `<project>_postgres_<DB_VOLUME_VERSION>` (e.g. `..._postgres_1`). Never use **Delete volumes** or `docker compose down -v` on this app unless you mean to wipe the database.
+- **Data is kept.** It lives in the named volume `<project>_postgres_<DB_VOLUME_VERSION>` (e.g. `..._postgres_2`). Never use **Delete volumes** or `docker compose down -v` on this app unless you mean to wipe the database.
 - **Rolling back code:** redeploy an earlier commit. If the newer release added a migration, check whether the old code works with the new schema before rolling back. Run `alembic downgrade <revision>` from the API container's terminal only after a backup, because downgrades can drop columns.
 - **Logs:** Dokploy's **Logs** tab per container. Each container keeps up to 5 × 10 MB of JSON logs.
 
 ## 8. Backups and restore
 
-- **Dokploy Volume Backups:** schedule backups of the database volume (`<project>_postgres_<DB_VOLUME_VERSION>`, e.g. `..._postgres_1`) to S3-compatible storage, as for the other apps' databases.
+- **Dokploy Volume Backups:** schedule backups of the database volume (`<project>_postgres_<DB_VOLUME_VERSION>`, e.g. `..._postgres_2`) to S3-compatible storage, as for the other apps' databases.
 - **Logical dump** (portable across PostgreSQL versions), from the **db** container's terminal:
 
   ```bash
@@ -163,7 +163,7 @@ Then:
 | `Unsafe production settings: ...` in the api logs | A placeholder `SECRET_KEY`, or `ALLOWED_HOSTS` set to `*` or empty. Fix it in Environment and redeploy. |
 | `secret_key ... at least 32 characters` | Generate a longer key (section 3). |
 | `FIRST_ADMIN_... is still the example value` | Set a real admin email and password. |
-| `password authentication failed for user ...` | PostgreSQL set its password when the volume was **first** created, so changing `POSTGRES_PASSWORD` later doesn't change it. **No real data yet:** add `DB_VOLUME_VERSION=2` (one higher than before; the default is 1) in the Environment tab and redeploy. That starts a fresh, empty database with the current password; the old volume is kept but no longer used. **Real data:** put the original password back, or change it inside PostgreSQL from the db container's terminal (`psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER task_user PASSWORD '<new>';"`) and then update the Environment tab. |
+| `password authentication failed for user ...` | PostgreSQL set its password when the volume was **first** created, so changing `POSTGRES_PASSWORD` later doesn't change it. **No real data yet:** add `DB_VOLUME_VERSION=3` (one higher than before; the default is 2) in the Environment tab and redeploy. That starts a fresh, empty database with the current password; the old volume is kept but no longer used. **Real data:** put the original password back, or change it inside PostgreSQL from the db container's terminal (`psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER task_user PASSWORD '<new>';"`) and then update the Environment tab. |
 | Cloudflare **522** | Cloudflare can't reach the server. Check the `A` record targets `103.181.227.8` and that ports 80/443 are open. |
 | Cloudflare **526** | Traefik has no valid certificate for the host: the app or domain isn't deployed yet, HTTPS/Let's Encrypt is off on the Dokploy domain, or the certificate is still being issued (grey-cloud the record for a few minutes). |
 | **502** from Traefik or the tunnel | nginx isn't running or isn't on `dokploy-network`. Check the nginx container and that the domain points to service `nginx`, port `80`. With a tunnel, check the Traefik container name used in the hostname URL. |

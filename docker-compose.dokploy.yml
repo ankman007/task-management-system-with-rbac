@@ -97,4 +97,4 @@ volumes:
     # database created with the current password. The old volume is kept, not
     # deleted, but the app stops using its data, so never raise it on a
     # database with real data: change the password inside PostgreSQL instead.
-    name: ${COMPOSE_PROJECT_NAME}_postgres_${DB_VOLUME_VERSION:-1}
+    name: ${COMPOSE_PROJECT_NAME}_postgres_${DB_VOLUME_VERSION:-2}

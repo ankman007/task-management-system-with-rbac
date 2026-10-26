@@ -615,7 +615,7 @@ Production runs on [Dokploy](https://dokploy.com) at **https://task-mgmt.ankit-p
 - One Dokploy **Compose** application from `docker-compose.dokploy.yml` on the `main` branch, configured from the Environment tab (template: [.env.dokploy.example](.env.dokploy.example)).
 - Services: `nginx` (the only one on Dokploy's network; the domain points to it on port 80), `api` and `db`. PostgreSQL and the API have no published ports.
 - Every API start applies migrations and seeds the first admin before serving. If that fails, the API never turns healthy, nginx doesn't start, and the deploy fails with the reason in the API logs.
-- Data lives in a named volume (`<project>_postgres_1`) and survives redeploys. If the database password ever gets out of sync on a database with no real data, raising `DB_VOLUME_VERSION` starts a fresh one.
+- Data lives in a named volume (`<project>_postgres_2`) and survives redeploys. If the database password ever gets out of sync on a database with no real data, raising `DB_VOLUME_VERSION` starts a fresh one.
 
 The full step-by-step guide, including Cloudflare, TLS, backups and troubleshooting, is in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
