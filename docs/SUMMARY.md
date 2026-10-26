@@ -1,6 +1,6 @@
 # Project summary
 
-Status as of 2026-10-26, on `main`. The async rewrite (formerly `feat/async-rbac-rewrite`) was fast-forwarded into `main`, and the production-readiness work below was committed on top.
+Status as of 2026-10-26, on `main`. **Live at https://task-mgmt.ankit-poudel.com.np** (Dokploy). The async rewrite (formerly `feat/async-rbac-rewrite`) was fast-forwarded into `main`, and the production-readiness work below was committed on top.
 
 ## What exists
 
@@ -67,8 +67,8 @@ Status as of 2026-10-26, on `main`. The async rewrite (formerly `feat/async-rbac
 
 ## Not done / needs someone with access
 
-1. **Actual deployment.** I had no Dokploy, Cloudflare or server access, so the steps in `docs/DEPLOYMENT.md` sections 2–6 must be done in the dashboards.
-2. **Cloudflare 526 until deployed.** The server is `103.181.227.8`, and Traefik on it is reachable directly (Ecommerce Store uses a Let's Encrypt certificate there; no tunnel). `task-mgmt` returns 526 only because Traefik has no router or certificate for it yet. Deploying with the Dokploy domain set to HTTPS + Let's Encrypt (DEPLOYMENT.md, Route A) fixes it. Keep the Cloudflare `A` record on `103.181.227.8`.
+1. **Deployed.** The app runs on Dokploy with Let's Encrypt behind Cloudflare. Getting it live took two production-only fixes: Swagger's Authorize needs the `/api` prefix in `tokenUrl`, and `DB_VOLUME_VERSION` (default 2) lets a fresh database be started from the Environment tab after a `POSTGRES_PASSWORD` mismatch.
+2. **Server housekeeping:** the unused volumes `..._postgres_data` and `..._postgres_1` from the failed first deploys can be deleted (`docker volume rm`). The app uses `..._postgres_2`.
 3. **The old pre-rewrite local stack is still running** (`task_manager_frontend`, `task_manager_db`, `task_manager_redis`, holding ports 18080/15432/16379, with the volume `pg17_data`). Stop it before using the new `docker compose up` on the default ports. Its data is the old schema and isn't used by the new stack.
 4. **Optional:** a Dokploy Volume Backup schedule for the database volume (`<project>_postgres_2`), and an uptime monitor on `/api/health`.
 

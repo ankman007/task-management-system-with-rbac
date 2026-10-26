@@ -18,7 +18,7 @@ This guide deploys the Task Management System at **https://task-mgmt.ankit-poude
 | Startup refuses placeholder secrets, a wildcard host and example admin credentials | Pressing **Deploy** and checking the result |
 | `.env.dokploy.example`, this guide, and CI that builds both images | Backups (Dokploy Volume Backups) |
 
-> **Status on 2026-10-26.** The server is `103.181.227.8`, and Traefik on it answers directly on port 443. It serves a Let's Encrypt certificate for `ecommerce-store.ankit-poudel.com.np`, which is the direct setup described in Route A below. `https://task-mgmt.ankit-poudel.com.np` currently returns **Cloudflare error 526**. Cloudflare reaches the server, but Traefik has no router for `task-mgmt` yet: it answers 404 with its self-signed `TRAEFIK DEFAULT CERT`. That is expected until the Dokploy app and its domain (with Let's Encrypt) exist. The 526 goes away after sections 2–5.
+> **Status: live since 2026-10-26** at https://task-mgmt.ankit-poudel.com.np. It runs as a Dokploy Compose app on `103.181.227.8`, with a Let's Encrypt certificate in Traefik behind Cloudflare (Full strict), the direct setup described in Route A below.
 
 ## How a request flows
 
