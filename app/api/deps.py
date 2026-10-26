@@ -14,7 +14,9 @@ from app.models import RoleName, User
 from app.services import user_service
 
 # auto_error=False so a missing token goes through our own 401 error format.
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+# The relative tokenUrl is resolved by Swagger against the OpenAPI document's
+# URL, so "Authorize" also works when the API is served under /api.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

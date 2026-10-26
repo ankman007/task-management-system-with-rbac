@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.models.enums import RoleName
+from app.schemas.common import RequestSchema
 
 
 class UserRead(BaseModel):
@@ -18,3 +19,7 @@ class UserRead(BaseModel):
     def _role_name(cls, value: object) -> object:
         # Built from the ORM, `role` is a Role object; expose just its name.
         return getattr(value, "name", value)
+
+
+class UserRoleUpdate(RequestSchema):
+    role: RoleName

@@ -1,9 +1,9 @@
 // Thin wrapper around fetch() for the Task Management API.
 //
-// API_BASE is empty because the frontend is served by nginx on the same origin,
-// which proxies /auth, /tasks and /users to the FastAPI container, so the
-// browser never makes a cross-origin request.
-const API_BASE = "";
+// The frontend is served by nginx, which proxies /api to the FastAPI container
+// on the same origin (in development and production alike), so the browser
+// never makes a cross-origin request and no host or port is hardcoded.
+const API_BASE = "/api";
 
 class ApiError extends Error {
   constructor(message, status, code) {
@@ -85,4 +85,6 @@ const Api = {
   deleteTask: (id) => apiRequest(`/tasks/${id}`, { method: "DELETE" }),
 
   listUsers: (params) => apiRequest(`/users${queryString(params)}`),
+  changeUserRole: (id, role) =>
+    apiRequest(`/users/${id}/role`, { method: "PATCH", body: { role } }),
 };

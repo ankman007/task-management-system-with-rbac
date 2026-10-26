@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
@@ -16,6 +17,9 @@ Task management API with role-based access control (ADMIN, MANAGER, USER).
 **Authenticating in Swagger:** register via `POST /auth/register`, then click
 **Authorize** and enter your email as the *username* along with your password.
 """
+
+# The container healthcheck calls the API directly on localhost.
+_INTERNAL_HOSTS = ("localhost", "127.0.0.1")
 
 
 @asynccontextmanager
@@ -34,15 +38,24 @@ def create_app() -> FastAPI:
             422: {"model": ErrorResponse, "description": "Validation error"},
         },
         swagger_ui_parameters={"persistAuthorization": True},
+        root_path=settings.root_path,
+        docs_url="/docs" if settings.docs_enabled else None,
+        redoc_url="/redoc" if settings.docs_enabled else None,
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
 
+    if "*" not in settings.allowed_hosts:
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=[*settings.allowed_hosts, *_INTERNAL_HOSTS],
+        )
     if settings.cors_origins:
+        # Auth is a bearer header, not a cookie, so credentials stay disabled.
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            allow_headers=["Authorization", "Content-Type"],
         )
 
     register_exception_handlers(app)

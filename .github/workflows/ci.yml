@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: task_user
+          POSTGRES_PASSWORD: task_password
+          POSTGRES_DB: task_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task_user -d task_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The suite creates this database itself.
+      TEST_DATABASE_URL: postgresql+asyncpg://task_user:task_password@localhost:5432/task_db_test
+      SECRET_KEY: ci-secret-key-that-is-long-enough-0123456789
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Migrations apply cleanly and match the models
+        env:
+          DATABASE_URL: postgresql+asyncpg://task_user:task_password@localhost:5432/task_db
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Pytest
+        run: pytest -q
+
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Production compose file is valid
+        run: |
+          cp .env.dokploy.example .env
+          docker network create dokploy-network
+          docker compose -f docker-compose.dokploy.yml config --quiet
+
+      - name: Build the API and nginx images
+        run: docker compose -f docker-compose.dokploy.yml build

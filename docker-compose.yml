@@ -1,10 +1,13 @@
-# Local stack: PostgreSQL, the FastAPI app and the static frontend.
+# Local development stack: PostgreSQL, the FastAPI app and the nginx front
+# door with the dashboard. Production uses docker-compose.dokploy.yml.
 #
 #   docker compose up -d --build                    # db + api + frontend
 #   docker compose --profile test run --rm test     # run the test suite
 #
 # Values come from .env (copy .env.example). Host ports are configurable so
 # they don't clash with other local services; container ports are fixed.
+# The dashboard is at http://localhost:18080 and calls the API at /api, as in
+# production; the API is also published directly on :18000 for debugging.
 
 services:
   db:
@@ -34,6 +37,8 @@ services:
       # Overrides the localhost URL in .env: inside the network the host is "db".
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-task_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-task_db}
       RUN_MIGRATIONS: "1"
+      # nginx serves the API under /api (routes also answer without it).
+      ROOT_PATH: /api
     ports:
       - "${API_HOST_PORT:-18000}:8000"
     depends_on:
@@ -42,12 +47,16 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: nginx:1.27-alpine
+    # Same image as production; the bind mount lets frontend edits show up
+    # without a rebuild.
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    image: task-management-nginx:latest
     ports:
       - "${FRONTEND_HOST_PORT:-18080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - api
     restart: unless-stopped

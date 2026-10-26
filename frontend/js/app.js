@@ -245,6 +245,37 @@ async function loadTasks() {
   refreshIcons();
 }
 
+// Admins (the only ones who see the Users page) change roles inline.
+function roleControl(user) {
+  return `<select class="select role-select" data-id="${user.id}" data-current="${user.role}"
+      aria-label="Role for ${escapeHtml(user.email)}">
+      ${Object.keys(ROLE_INFO).map((role) =>
+        `<option value="${role}" ${role === user.role ? "selected" : ""}>${role}</option>`).join("")}
+    </select>`;
+}
+
+async function changeRole(select) {
+  const id = Number(select.dataset.id);
+  const previous = select.dataset.current;
+  select.disabled = true;
+  try {
+    const updated = await Api.changeUserRole(id, select.value);
+    state.users.set(updated.id, updated);
+    if (updated.id === state.user.id) {
+      // Demoted yourself: the dashboard must re-render with the new rights.
+      saveSession({ ...getSession(), user: updated });
+      location.reload();
+      return;
+    }
+    toast(`${updated.email} is now ${updated.role}.`);
+    loadUsers();
+  } catch (err) {
+    select.value = previous;
+    select.disabled = false;
+    toast(err.message, "error");
+  }
+}
+
 async function changeStatus(select) {
   const id = Number(select.dataset.id);
   const previous = select.dataset.current;
@@ -293,7 +324,7 @@ async function loadUsers() {
         <tbody>${users.map((u) => `<tr>
           <td><span class="person">${avatar(u.email)}${escapeHtml(u.email)}${u.id === state.user.id ? ' <span class="faint">(you)</span>' : ""}</span></td>
           <td class="muted">#${u.id}</td>
-          <td>${roleBadge(u.role)}</td>
+          <td>${roleControl(u)}</td>
         </tr>`).join("")}</tbody>
       </table>`;
     }
@@ -307,7 +338,7 @@ async function loadUsers() {
 // --- Roles page (admin) ----------------------------------------------------------
 
 const ROLE_INFO = {
-  ADMIN: { icon: "crown", text: "Full access to every task, including deleting tasks." },
+  ADMIN: { icon: "crown", text: "Full access to every task, including deleting tasks, and manages user roles." },
   MANAGER: { icon: "briefcase", text: "Creates and assigns tasks, and manages the ones they own or are assigned." },
   USER: { icon: "user", text: "Sees and updates the status of tasks assigned to them." },
 };
@@ -320,6 +351,7 @@ const PERMISSIONS = [
   ["Update task status", ["All", "Created or assigned", "Assigned only"]],
   ["Delete tasks", [true, false, false]],
   ["View users", [true, true, false]],
+  ["Change user roles", [true, false, false]],
 ];
 
 function permissionCell(value) {
@@ -488,6 +520,9 @@ function bindEvents() {
   });
   $("#tasks-table").addEventListener("change", (event) => {
     if (event.target.matches(".status-select")) changeStatus(event.target);
+  });
+  $("#users-table").addEventListener("change", (event) => {
+    if (event.target.matches(".role-select")) changeRole(event.target);
   });
 
   // Filters

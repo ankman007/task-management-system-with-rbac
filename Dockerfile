@@ -31,7 +31,10 @@ RUN pip install -r /tmp/requirements-dev.txt
 # app user can read but not modify it)
 # ---------------------------------------------------------------------------
 FROM base AS app-base
-RUN groupadd --system app && useradd --system --gid app --no-create-home app
+# Fixed IDs so file ownership is predictable across rebuilds and hosts.
+ARG APP_UID=1000
+ARG APP_GID=1000
+RUN groupadd --system --gid "${APP_GID}" app     && useradd --system --uid "${APP_UID}" --gid app --no-create-home         --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY alembic.ini ./
@@ -62,4 +65,7 @@ EXPOSE 8000
 # slim has no curl; use the interpreter that's already there.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# The API is only reachable from nginx on the internal network, so trusting
+# X-Forwarded-* from any peer is safe. WEB_CONCURRENCY sets the worker count.
+ENV FORWARDED_ALLOW_IPS="*"
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--no-server-header"]

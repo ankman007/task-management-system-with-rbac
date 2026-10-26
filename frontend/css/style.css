@@ -406,6 +406,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.015em; }
 
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .status-select { width: 132px; height: 30px; font-size: 13px; }
+.role-select { width: 120px; height: 30px; font-size: 13px; }
 
 .pager {
   display: flex;

@@ -35,7 +35,13 @@ TEST_DATABASE_URL = os.environ.get(
 # DATABASE_URL is forced (not defaulted) so a test run can never touch a dev DB.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ.setdefault("SECRET_KEY", "test-secret-key-that-is-long-enough")
-os.environ.setdefault("ENVIRONMENT", "test")
+# Forced as well, so values from a developer's .env (production-like hosts, an
+# /api prefix, disabled docs) can't change what the tests exercise.
+os.environ["ENVIRONMENT"] = "test"
+os.environ["ALLOWED_HOSTS"] = "*"
+os.environ["CORS_ORIGINS"] = ""
+os.environ["ROOT_PATH"] = ""
+os.environ["DOCS_ENABLED"] = "true"
 
 from collections.abc import AsyncIterator, Awaitable, Callable  # noqa: E402
 from datetime import date, datetime  # noqa: E402

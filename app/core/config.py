@@ -2,10 +2,13 @@
 
 import json
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# Substrings of the example values shipped in .env.example / .env.dokploy.example.
+PLACEHOLDER_MARKERS = ("change-me", "replace-with", "changeme")
 
 
 class Settings(BaseSettings):
@@ -33,9 +36,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=60, ge=1)
 
-    # Comma-separated list in the environment, e.g. "http://localhost:18080".
-    # NoDecode stops pydantic-settings from requiring JSON for this field.
+    # Comma-separated lists in the environment, e.g. "http://localhost:18080".
+    # NoDecode stops pydantic-settings from requiring JSON for these fields.
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Host headers the API answers to; "*" allows any (development only).
+    allowed_hosts: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
+
+    # Path prefix the reverse proxy serves the API under (e.g. "/api"). Routes
+    # stay unprefixed; requests may arrive with or without it.
+    root_path: str = ""
+    docs_enabled: bool = True
 
     @field_validator("database_url")
     @classmethod
@@ -45,14 +55,38 @@ class Settings(BaseSettings):
                 return "postgresql+asyncpg://" + value.removeprefix(prefix)
         return value
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod
-    def _split_origins(cls, value: object) -> object:
+    def _split_list(cls, value: object) -> object:
         if not isinstance(value, str):
             return value
         if value.lstrip().startswith("["):
             return json.loads(value)
-        return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    @field_validator("root_path")
+    @classmethod
+    def _normalise_root_path(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if value and not value.startswith("/"):
+            raise ValueError("ROOT_PATH must start with '/', e.g. /api")
+        return value
+
+    @model_validator(mode="after")
+    def _check_production_safety(self) -> Self:
+        """Refuse to start in production with development-only settings."""
+        if self.environment != "production":
+            return self
+        problems = []
+        if any(marker in self.secret_key.lower() for marker in PLACEHOLDER_MARKERS):
+            problems.append("SECRET_KEY is a placeholder; generate a random one")
+        if not self.allowed_hosts or "*" in self.allowed_hosts:
+            problems.append("ALLOWED_HOSTS must list the public host(s), not '*'")
+        if "*" in self.cors_origins:
+            problems.append("CORS_ORIGINS must not be '*'")
+        if problems:
+            raise ValueError("Unsafe production settings: " + "; ".join(problems))
+        return self
 
 
 @lru_cache

@@ -29,10 +29,12 @@ build
 dist
 *.egg-info
 
-# Not needed inside the API image (the frontend is served by nginx)
+# Not needed inside the API image (the frontend is served by nginx, whose
+# image uses deploy/nginx/Dockerfile.dockerignore instead of this file)
 frontend
-nginx
+deploy
 docs
+.github
 *.md
 docker-compose*.yml
 Dockerfile

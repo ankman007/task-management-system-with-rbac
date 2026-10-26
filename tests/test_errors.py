@@ -22,6 +22,7 @@ PROTECTED_ENDPOINTS = [
     ("PATCH", "/tasks/1/assign", {"assigned_to": None}),
     ("PATCH", "/tasks/1/status", {"status": "IN_PROGRESS"}),
     ("DELETE", "/tasks/1", None),
+    ("PATCH", "/users/1/role", {"role": "USER"}),
 ]
 ENDPOINT_IDS = [f"{method} {path}" for method, path, _ in PROTECTED_ENDPOINTS]
 

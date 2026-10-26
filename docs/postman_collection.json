@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Task Management API with RBAC",
-    "description": "FastAPI task management API with RBAC (ADMIN / MANAGER / USER).\n\n1. Set `base_url` (default http://localhost:18000).\n2. Run Auth > Login. The token is saved to `token`, and every other request uses collection-level Bearer auth.\n3. Run Auth > Register to create a user. Its id is saved to `user_id`, which Assign task uses.\n4. Run Tasks > Create task. The id is saved to `task_id`. The Tasks folder can then be run top to bottom.\n\nErrors always have the shape {\"error\": {\"code\", \"message\", \"details\"}}. Log in as a MANAGER or USER to try the RBAC rules.",
+    "description": "FastAPI task management API with RBAC (ADMIN / MANAGER / USER).\n\n1. Set `base_url`: `http://localhost:18000` (API directly, the default), `http://localhost:18080/api` (through the local nginx) or `https://task-mgmt.ankit-poudel.com.np/api` (production).\n2. Run Auth > Login. The token is saved to `token`, and every other request uses collection-level Bearer auth.\n3. Run Auth > Register to create a user. Its id is saved to `user_id`, which Assign task uses.\n4. Run Tasks > Create task. The id is saved to `task_id`. The Tasks folder can then be run top to bottom.\n\nErrors always have the shape {\"error\": {\"code\", \"message\", \"details\"}}. Log in as a MANAGER or USER to try the RBAC rules.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -349,6 +349,95 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change user role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}/role",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}",
+                "role"
+              ]
+            },
+            "description": "ADMIN only. Gives the user saved in `user_id` (by Auth > Register) the MANAGER role. Roles: ADMIN, MANAGER, USER. Takes effect on the user's next request; their existing token keeps working. 403 for non-admins, 404 for an unknown user, 409 LAST_ADMIN when it would remove the last ADMIN.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"MANAGER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Role is MANAGER\", () => pm.expect(pm.response.json().role).to.eql(\"MANAGER\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change user role - unknown role (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/{{user_id}}/role",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}",
+                "role"
+              ]
+            },
+            "description": "Only ADMIN, MANAGER and USER are accepted.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"SUPERUSER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422\", () => pm.response.to.have.status(422));"
                 ]
               }
             }

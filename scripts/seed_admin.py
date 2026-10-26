@@ -7,11 +7,18 @@ Usage::
 Reads FIRST_ADMIN_EMAIL and FIRST_ADMIN_PASSWORD from the environment (or
 `.env`). The script is idempotent and safe to run on every container start:
 
-* both variables unset   -> nothing to do, exit 0 (bootstrapping is optional);
-* only one of them set   -> configuration error, exit 1;
-* the email already exists -> make sure the account has the ADMIN role, but
-  never touch its password (it may have been changed since);
-* otherwise              -> create the account with the ADMIN role.
+* both variables unset     -> nothing to do, exit 0 (bootstrapping is optional);
+* only one of them set     -> configuration error, exit 1;
+* the email already exists -> leave the account alone: never change its
+  password or its role. An existing non-admin account is NOT promoted,
+  because anyone could have registered that email through the public
+  /auth/register endpoint before the first deploy; promote it explicitly
+  with PATCH /users/{id}/role instead;
+* otherwise                -> create the account with the ADMIN role.
+
+With ENVIRONMENT=production the example values from .env.example and
+.env.dokploy.example are rejected (exit 1), so a deploy can't go live with
+well-known credentials.
 
 The roles themselves are created by migration 0002, so run
 `alembic upgrade head` first.
@@ -27,6 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import PLACEHOLDER_MARKERS
 from app.core.security import hash_password
 from app.db.session import async_session_factory, engine
 from app.models import Role, RoleName, User
@@ -40,6 +48,7 @@ class SeedAdminSettings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    environment: str = "local"
     first_admin_email: str | None = None
     first_admin_password: str | None = None
 
@@ -52,13 +61,17 @@ class SeedAdminSettings(BaseSettings):
         return value
 
 
+# The example credentials shipped in .env.example.
+_EXAMPLE_VALUES = frozenset({"admin@example.com", "Admin12345"})
+
+
 class SeedError(Exception):
     """A problem the operator has to fix; reported without a traceback."""
 
 
-def load_credentials() -> UserRegister | None:
+def load_credentials(config: SeedAdminSettings | None = None) -> UserRegister | None:
     """Return validated credentials, or None if seeding is not configured."""
-    config = SeedAdminSettings()
+    config = config or SeedAdminSettings()
     email, password = config.first_admin_email, config.first_admin_password
 
     if email is None and password is None:
@@ -69,6 +82,17 @@ def load_credentials() -> UserRegister | None:
             f"{missing} is not set. Set both FIRST_ADMIN_EMAIL and "
             "FIRST_ADMIN_PASSWORD, or neither to skip admin seeding."
         )
+    if config.environment == "production":
+        for name, value in (
+            ("FIRST_ADMIN_EMAIL", email),
+            ("FIRST_ADMIN_PASSWORD", password),
+        ):
+            if value in _EXAMPLE_VALUES or any(
+                marker in value.lower() for marker in PLACEHOLDER_MARKERS
+            ):
+                raise SeedError(
+                    f"{name} is still the example value; set a real one for production."
+                )
 
     # Same rules as POST /auth/register (email format, lower-casing, password
     # length and complexity), so the admin can log in through the normal flow.
@@ -100,11 +124,12 @@ async def ensure_admin(session: AsyncSession, credentials: UserRegister) -> None
         await session.commit()
         logger.info("Created admin account %s", credentials.email)
     elif user.role_id != admin_role.id:
-        previous = user.role.name
-        user.role_id = admin_role.id
-        await session.commit()
-        logger.info(
-            "Promoted existing account %s from %s to ADMIN", user.email, previous
+        logger.warning(
+            "Account %s already exists with role %s; not promoting it. "
+            "If it is yours, have an admin call PATCH /users/%d/role.",
+            user.email,
+            user.role.name,
+            user.id,
         )
     else:
         logger.info("Admin account %s already exists; nothing to do", user.email)

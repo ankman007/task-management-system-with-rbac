@@ -1,0 +1,6 @@
+# Build context for deploy/nginx/Dockerfile (BuildKit reads this file instead
+# of the root .dockerignore): only the nginx config and the frontend.
+*
+!deploy/nginx/default.conf
+!deploy/nginx/*.inc
+!frontend/

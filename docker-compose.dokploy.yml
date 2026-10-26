@@ -1,0 +1,95 @@
+# Production stack for Dokploy (Compose application, Compose Path:
+# ./docker-compose.dokploy.yml). See docs/DEPLOYMENT.md.
+#
+# How it works:
+# - Dokploy builds both images from the repository (no registry needed).
+# - Environment comes from Dokploy's Environment tab, which Dokploy writes to
+#   `.env` next to this file (template: .env.dokploy.example).
+# - No host ports. Dokploy's Traefik owns 80/443 and reaches the `nginx`
+#   service (container port 80) over the external dokploy-network; attach the
+#   domain to it in the Domains tab. PostgreSQL and the API stay on the
+#   project's private network.
+# - nginx serves the dashboard at / and proxies /api, /docs and /openapi.json
+#   to the API, so everything is one origin and needs no CORS.
+# - The api container applies migrations and seeds the first admin before it
+#   starts serving. If either fails, the container never becomes healthy,
+#   nginx (which waits for it) doesn't start, and the deploy fails with the
+#   reason in the api logs.
+# - Data lives in a named volume; redeploys and restarts keep it.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  api:
+    build:
+      context: .
+      target: runtime
+    image: task-management-api:dokploy
+    pull_policy: build
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:?set POSTGRES_DB}
+      ENVIRONMENT: production
+      ROOT_PATH: /api
+      RUN_MIGRATIONS: "1"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # First start includes migrations and the admin seed.
+      start_period: 60s
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    image: task-management-nginx:dokploy
+    pull_policy: build
+    networks:
+      - default
+      - dokploy-network
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the Environment tab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the Environment tab}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in the Environment tab}
+    volumes:
+      # PostgreSQL creates its user from POSTGRES_PASSWORD only when this
+      # volume is first initialised; changing the variable later does NOT
+      # change the database password (see docs/DEPLOYMENT.md, troubleshooting).
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  postgres_data:
