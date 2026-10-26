@@ -14,16 +14,16 @@ This guide deploys the Task Management System at **https://task-mgmt.ankit-poude
 | `docker-compose.dokploy.yml`: `api`, `nginx` and `db` services, healthchecks, restart policies, log rotation, private network, persistent volume | Creating the Compose application and pointing it at the repository |
 | `deploy/nginx/`: an nginx image with the dashboard baked in, `/api` proxy, rate limiting and security headers | Filling in the Environment tab with real secrets |
 | `Dockerfile`: non-root API image with a healthcheck | Adding the domain in Dokploy |
-| Migrations and the idempotent admin seed run on every API start | Cloudflare DNS / Tunnel and SSL settings |
+| Migrations and the idempotent admin seed run on every API start | Cloudflare DNS and SSL settings |
 | Startup refuses placeholder secrets, a wildcard host and example admin credentials | Pressing **Deploy** and checking the result |
 | `.env.dokploy.example`, this guide, and CI that builds both images | Backups (Dokploy Volume Backups) |
 
-> **Status on 2026-10-26.** `https://task-mgmt.ankit-poudel.com.np` returns **Cloudflare error 522**: Cloudflare can't open a connection to `202.79.47.147`. A direct request to that IP times out too. `https://ecommerce-store.ankit-poudel.com.np`, on the same server, answers normally. That fits the Ecommerce Store guide, which moved to a **Cloudflare Tunnel** because ports 80/443 aren't reachable from the internet. Unless those ports have since been opened, use [Route B (Cloudflare Tunnel)](#route-b-cloudflare-tunnel-likely-the-current-setup) below. The plain proxied `A` record (Route A) will keep returning 522.
+> **Status on 2026-10-26.** The server is `103.181.227.8`, and Traefik on it answers directly on port 443. It serves a Let's Encrypt certificate for `ecommerce-store.ankit-poudel.com.np`, which is the direct setup described in Route A below. `https://task-mgmt.ankit-poudel.com.np` currently returns **Cloudflare error 526**. Cloudflare reaches the server, but Traefik has no router for `task-mgmt` yet: it answers 404 with its self-signed `TRAEFIK DEFAULT CERT`. That is expected until the Dokploy app and its domain (with Let's Encrypt) exist. The 526 goes away after sections 2–5.
 
 ## How a request flows
 
 ```text
-Browser ──HTTPS──> Cloudflare ──(Tunnel, or direct to 202.79.47.147)──> Traefik (Dokploy)
+Browser ──HTTPS──> Cloudflare ──HTTPS──> Traefik on 103.181.227.8 (Dokploy, Let's Encrypt)
         ──HTTP──> nginx:80 ──┬── /                      dashboard (static files in the image)
                              ├── /api/...               api:8000  (FastAPI, ROOT_PATH=/api)
                              └── /docs, /openapi.json   api:8000  (Swagger UI)
@@ -78,18 +78,18 @@ In **Domains → Create Domain**:
 
 The HTTPS settings depend on how Cloudflare reaches the server.
 
-### Route A: direct (ports 80/443 open to the internet)
+### Route A: direct (the current setup, same as Ecommerce Store)
 
-1. **Cloudflare → DNS:** `A` record `task-mgmt` → `202.79.47.147`, **Proxied** (this record already exists).
+1. **Cloudflare → DNS:** `A` record `task-mgmt` → `103.181.227.8`, **Proxied**. Make sure the record targets this IP, not an older one.
 2. **Cloudflare → SSL/TLS → Overview:** **Full (strict)**, as for the other subdomains.
 3. **Dokploy domain:** HTTPS **on**, certificate **Let's Encrypt**.
-4. If Cloudflare shows **526** right after this, Let's Encrypt hasn't issued the certificate yet. Set the record to **DNS only** (grey cloud), wait a couple of minutes, then switch it back to **Proxied**.
+4. If Cloudflare still shows **526** after deploying, Let's Encrypt hasn't issued the certificate yet. Set the record to **DNS only** (grey cloud), wait a couple of minutes, then switch it back to **Proxied**. Check the result with `openssl s_client -connect 103.181.227.8:443 -servername task-mgmt.ankit-poudel.com.np </dev/null | openssl x509 -noout -subject -issuer`. It should show a Let's Encrypt issuer, not `TRAEFIK DEFAULT CERT`.
 
-If you get **522**, the server isn't reachable on 80/443 from the internet. No app setting fixes that: use Route B, or have the network owner open or forward TCP 80/443.
+If you get **522**, Cloudflare can't connect at all. Check that the `A` record targets `103.181.227.8` and that ports 80/443 are open. If they ever can't be opened, use Route B.
 
-### Route B: Cloudflare Tunnel (likely the current setup)
+### Route B: Cloudflare Tunnel (only if the server ever loses direct reachability)
 
-The Ecommerce Store guide (section 10) sets up one `cloudflared` tunnel for every app on the server. It's deployed as its own Dokploy Compose service from `ecommerce-store/deploy/cloudflared`, and it sends traffic to Traefik. To add this app to it:
+Not needed today. The Ecommerce Store guide (section 10) describes a fallback: one `cloudflared` tunnel for every app on the server, deployed as its own Dokploy Compose service from `ecommerce-store/deploy/cloudflared`, sending traffic to Traefik. If you ever set that up, add this app to it:
 
 1. **Cloudflare → DNS:** delete the existing `A` record for `task-mgmt`. The tunnel creates its own record, and a record with the same name conflicts with it.
 2. **Cloudflare → Zero Trust → Networks → Tunnels →** the existing tunnel **→ Public Hostname → Add**:
@@ -164,8 +164,8 @@ Then:
 | `secret_key ... at least 32 characters` | Generate a longer key (section 3). |
 | `FIRST_ADMIN_... is still the example value` | Set a real admin email and password. |
 | `password authentication failed for user ...` | PostgreSQL set its password when the volume was **first** created. Changing `POSTGRES_PASSWORD` later doesn't change it. Put the original password back, or change it inside PostgreSQL from the db container's terminal (`psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER task_user PASSWORD '<new>';"`), then update the Environment tab. Don't delete the volume if it holds real data. |
-| Cloudflare **522** | Cloudflare can't reach the server on 80/443. Use the tunnel (Route B) or open the ports. |
-| Cloudflare **526** | Route A only: the certificate isn't issued yet. Grey-cloud the record for a few minutes. |
+| Cloudflare **522** | Cloudflare can't reach the server. Check the `A` record targets `103.181.227.8` and that ports 80/443 are open. |
+| Cloudflare **526** | Traefik has no valid certificate for the host: the app or domain isn't deployed yet, HTTPS/Let's Encrypt is off on the Dokploy domain, or the certificate is still being issued (grey-cloud the record for a few minutes). |
 | **502** from Traefik or the tunnel | nginx isn't running or isn't on `dokploy-network`. Check the nginx container and that the domain points to service `nginx`, port `80`. With a tunnel, check the Traefik container name used in the hostname URL. |
 | Too many redirects | Route B with HTTPS turned on in the Dokploy domain. Turn it off (Cloudflare does HTTPS). |
 | `Invalid host header` (400) | `ALLOWED_HOSTS` doesn't include the domain being used. |

@@ -68,7 +68,7 @@ Status as of 2026-10-26, on `main`. The async rewrite (formerly `feat/async-rbac
 ## Not done / needs someone with access
 
 1. **Actual deployment.** I had no Dokploy, Cloudflare or server access, so the steps in `docs/DEPLOYMENT.md` sections 2–6 must be done in the dashboards.
-2. **Cloudflare 522.** As of 2026-10-26 the `task-mgmt` record returns 522 and the server IP doesn't answer directly, while Ecommerce Store works. The most likely explanation is that the server is only reachable through the Cloudflare Tunnel. Add `task-mgmt` as a public hostname on that tunnel (DEPLOYMENT.md, Route B) instead of the proxied A record.
+2. **Cloudflare 526 until deployed.** The server is `103.181.227.8`, and Traefik on it is reachable directly (Ecommerce Store uses a Let's Encrypt certificate there; no tunnel). `task-mgmt` returns 526 only because Traefik has no router or certificate for it yet. Deploying with the Dokploy domain set to HTTPS + Let's Encrypt (DEPLOYMENT.md, Route A) fixes it. Keep the Cloudflare `A` record on `103.181.227.8`.
 3. **The old pre-rewrite local stack is still running** (`task_manager_frontend`, `task_manager_db`, `task_manager_redis`, holding ports 18080/15432/16379, with the volume `pg17_data`). Stop it before using the new `docker compose up` on the default ports. Its data is the old schema and isn't used by the new stack.
 4. **Optional:** a Dokploy Volume Backup schedule for `postgres_data`, and an uptime monitor on `/api/health`.
 
