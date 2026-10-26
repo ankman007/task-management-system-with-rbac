@@ -31,7 +31,7 @@ Status as of 2026-10-26, on `main`. The async rewrite (formerly `feat/async-rbac
 - **The seed no longer auto-promotes existing accounts.** Previously, anyone who registered `FIRST_ADMIN_EMAIL` before the first deploy would have been made ADMIN.
 - **Single origin.** nginx serves `/` (dashboard), `/api/*`, `/docs` and `/openapi.json`.
   - The app runs with `ROOT_PATH=/api`. Starlette strips the prefix when it's present, so routes answer with or without it, and tests and direct access are unchanged.
-  - Swagger's `tokenUrl` is relative (`auth/login`), so **Authorize** works under the prefix.
+  - Swagger's `tokenUrl` includes the prefix (`/api/auth/login`), because Swagger UI resolves it against the `/docs` page URL. That makes **Authorize** work through the proxy; it was verified by clicking Authorize in a real browser.
 - **Production safety in config.** With `ENVIRONMENT=production`, startup fails on a placeholder `SECRET_KEY`, `ALLOWED_HOSTS=*` or `CORS_ORIGINS=*`.
   - New settings: `ALLOWED_HOSTS` (TrustedHostMiddleware; localhost always allowed for the healthcheck), `ROOT_PATH`, `DOCS_ENABLED`.
   - CORS never allows credentials.

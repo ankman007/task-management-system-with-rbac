@@ -13,10 +13,12 @@ from app.db.session import async_session_factory
 from app.models import RoleName, User
 from app.services import user_service
 
+TOKEN_PATH = "/auth/login"
+
 # auto_error=False so a missing token goes through our own 401 error format.
-# The relative tokenUrl is resolved by Swagger against the OpenAPI document's
-# URL, so "Authorize" also works when the API is served under /api.
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+# Behind a proxy prefix (ROOT_PATH) the URL Swagger posts to is rewritten in
+# app.main, because Swagger UI resolves tokenUrl against the page, not the spec.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=TOKEN_PATH, auto_error=False)
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

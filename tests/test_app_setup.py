@@ -65,10 +65,36 @@ async def test_openapi_advertises_the_prefix_so_swagger_calls_the_right_urls(
     docs = await client.get("/docs")
 
     assert spec["servers"] == [{"url": "/api"}]
-    # Relative, so Swagger resolves it against /api/openapi.json -> /api/auth/login.
+    # Swagger UI resolves tokenUrl against the page (/docs), so it must carry
+    # the prefix for Authorize to reach the API through the proxy.
     flow = spec["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"]
-    assert flow["password"]["tokenUrl"] == "auth/login"
+    assert flow["password"]["tokenUrl"] == "/api/auth/login"
     assert "/api/openapi.json" in docs.text
+
+
+async def test_swagger_token_url_is_the_plain_login_route_without_a_prefix(
+    configure, http
+):
+    spec = (await http(configure(root_path="")).get("/openapi.json")).json()
+
+    flow = spec["components"]["securitySchemes"]["OAuth2PasswordBearer"]["flows"]
+    assert flow["password"]["tokenUrl"] == "/auth/login"
+
+
+# Uses the app's own database session (no test transaction), so the test
+# database and schema must exist: the `engine` fixture creates them.
+@pytest.mark.usefixtures("engine")
+async def test_the_prefixed_token_url_reaches_the_login_route(configure, http):
+    # What Swagger's Authorize sends: a form POST to /api/auth/login. Unknown
+    # credentials get the login route's own 401, not a 404.
+    client = http(configure(root_path="/api"))
+
+    response = await client.post(
+        "/api/auth/login",
+        data={"username": "nobody@example.com", "password": "Wrong12345"},
+    )
+
+    assert_error(response, 401, "INVALID_CREDENTIALS")
 
 
 async def test_unknown_host_headers_are_rejected_when_hosts_are_restricted(

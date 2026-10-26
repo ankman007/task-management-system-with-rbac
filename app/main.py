@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.deps import TOKEN_PATH
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
@@ -60,12 +61,32 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router)
+    _prefix_swagger_token_url(app)
 
     @app.get("/health", tags=["Health"], summary="Liveness probe")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     return app
+
+
+def _prefix_swagger_token_url(app: FastAPI) -> None:
+    """Point Swagger's Authorize at the login route as the browser reaches it.
+
+    Swagger UI resolves the OAuth2 tokenUrl against the page URL (/docs), so
+    behind a proxy prefix it must include ROOT_PATH (e.g. /api/auth/login).
+    Routes also answer without the prefix, so the URL works either way.
+    """
+    generate = app.openapi
+
+    def openapi() -> dict:
+        if app.openapi_schema is None:
+            schema = generate()
+            flows = schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]
+            flows["flows"]["password"]["tokenUrl"] = settings.root_path + TOKEN_PATH
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 app = create_app()
